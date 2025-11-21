@@ -2,14 +2,33 @@
 const SUPABASE_URL = "YOUR_SUPABASE_URL_HERE";
 const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY_HERE";
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Initialize Supabase with error handling for graceful degradation
+let supabase = null;
+try {
+  if (window.supabase && SUPABASE_URL !== "YOUR_SUPABASE_URL_HERE" && SUPABASE_ANON_KEY !== "YOUR_SUPABASE_ANON_KEY_HERE") {
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  } else {
+    console.warn("Supabase not configured - running in guest-only mode");
+  }
+} catch (error) {
+  console.error("Failed to initialize Supabase:", error);
+  console.warn("Running in guest-only mode");
+}
 
 // Global state
 let currentUser = null;
-let isGuest = false;
+let isGuest = !supabase; // Default to guest mode if Supabase is not configured
 let uploadedImages = [];
 let imageCounter = 0;
 let currentCategoryFilter = null; // Track the selected category filter
+
+// Hide boot screen after 3 seconds - execute immediately to ensure it always runs
+setTimeout(() => {
+  const bootScreen = document.getElementById("boot-screen");
+  if (bootScreen) {
+    bootScreen.style.display = "none";
+  }
+}, 3000);
 
 // DOM elements
 const loginTab = document.getElementById("login-tab");
@@ -28,15 +47,18 @@ const statusTime = document.getElementById("status-time");
 
 // Initialize the app
 document.addEventListener("DOMContentLoaded", () => {
-  // Show boot screen initially, then hide after 3 seconds
-  const bootScreen = document.getElementById("boot-screen");
-  setTimeout(() => {
-    bootScreen.style.display = "none";
-  }, 3000);
-
   setupEventListeners();
   setupCategoryFilters();
-  checkUserSession();
+
+  // If Supabase is not configured, initialize in guest mode
+  if (!supabase) {
+    updateUIForGuest();
+    disableAuthUI();
+    switchTab("blog"); // Automatically switch to blog tab
+  } else {
+    checkUserSession();
+  }
+
   loadPosts(); // Load posts by default when page loads
   updateStatusTime();
   setInterval(updateStatusTime, 1000);
@@ -199,6 +221,11 @@ function switchTab(tab) {
 
 // Check for existing user session
 async function checkUserSession() {
+  if (!supabase) {
+    console.log("Supabase not available - skipping session check");
+    return;
+  }
+
   try {
     const {
       data: { session },
@@ -215,6 +242,12 @@ async function checkUserSession() {
 // Handle user login
 async function handleLogin(e) {
   e.preventDefault();
+
+  if (!supabase) {
+    showAlert("Authentication is not available. Supabase is not configured.");
+    return;
+  }
+
   const email = document.getElementById("email").value;
   const password = document.getElementById("password").value;
 
@@ -238,6 +271,11 @@ async function handleLogin(e) {
 
 // Handle user registration
 async function handleRegister() {
+  if (!supabase) {
+    showAlert("Authentication is not available. Supabase is not configured.");
+    return;
+  }
+
   const email = document.getElementById("email").value;
   const password = document.getElementById("password").value;
 
@@ -285,7 +323,9 @@ function handleGuestMode() {
 async function handleLogout() {
   showProgressBar("Signing out...", async () => {
     try {
-      await supabase.auth.signOut();
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
       currentUser = null;
       isGuest = false;
       updateUIForLoggedOut();
@@ -333,9 +373,34 @@ function updateUIForLoggedOut() {
   clearImageUploads();
 }
 
+// Disable authentication UI when Supabase is not configured
+function disableAuthUI() {
+  const loginBtn = loginForm.querySelector('button[type="submit"]');
+  const registerBtn = document.getElementById("register-btn");
+  const guestBtn = document.getElementById("guest-btn");
+
+  if (loginBtn) {
+    loginBtn.disabled = true;
+    loginBtn.title = "Authentication unavailable - Supabase not configured";
+  }
+  if (registerBtn) {
+    registerBtn.disabled = true;
+    registerBtn.title = "Authentication unavailable - Supabase not configured";
+  }
+  if (guestBtn) {
+    guestBtn.disabled = true;
+    guestBtn.title = "Already in guest mode";
+  }
+}
+
 // Handle creating new posts
 async function handleCreatePost(e) {
   e.preventDefault();
+
+  if (!supabase) {
+    showAlert("Cannot create posts. Supabase is not configured.");
+    return;
+  }
 
   if (!currentUser) {
     showAlert("You must be logged in to create posts");
@@ -377,6 +442,17 @@ async function loadPosts(category = null) {
   const loadingSection = document.getElementById("posts-loading");
   if (loadingSection) {
     loadingSection.style.display = "block";
+  }
+
+  // If Supabase is not available, show a helpful message
+  if (!supabase) {
+    if (loadingSection) {
+      loadingSection.style.display = "none";
+    }
+    postsSection.innerHTML =
+      "<h3>Blog Posts</h3><p>No posts available. Supabase is not configured.</p><p>Please configure Supabase credentials in app.js to enable full functionality.</p>";
+    statusPosts.textContent = "0 posts";
+    return;
   }
 
   try {
@@ -809,13 +885,15 @@ function renderPostContentWithImages(content, images) {
 }
 
 // Listen for auth state changes
-supabase.auth.onAuthStateChange((event, session) => {
-  if (event === "SIGNED_IN") {
-    currentUser = session.user;
-    updateUIForLoggedInUser();
-  } else if (event === "SIGNED_OUT") {
-    currentUser = null;
-    isGuest = false;
-    updateUIForLoggedOut();
-  }
-});
+if (supabase) {
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event === "SIGNED_IN") {
+      currentUser = session.user;
+      updateUIForLoggedInUser();
+    } else if (event === "SIGNED_OUT") {
+      currentUser = null;
+      isGuest = false;
+      updateUIForLoggedOut();
+    }
+  });
+}
