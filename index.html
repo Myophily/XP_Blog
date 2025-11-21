@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Myophily's Blog</title>
+    <link rel="stylesheet" href="https://unpkg.com/xp.css" />
+    <link rel="stylesheet" href="style.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  </head>
+  <body>
+    <!-- Boot Screen Overlay -->
+    <div id="boot-screen" class="boot-screen">
+      <img src="booting.gif" alt="Windows XP Loading" class="boot-image" />
+    </div>
+
+    <div class="desktop">
+      <div class="window main-window">
+        <div class="title-bar">
+          <div class="title-bar-text">Myophily's Blog - Internet Explorer</div>
+          <div class="title-bar-controls">
+            <button aria-label="Minimize"></button>
+            <button aria-label="Maximize"></button>
+            <button aria-label="Close"></button>
+          </div>
+        </div>
+
+        <div class="window-body">
+          <menu role="tablist">
+            <button
+              id="blog-tab"
+              role="tab"
+              aria-selected="true"
+              aria-controls="blog-panel"
+            >
+              Blog Posts
+            </button>
+            <button id="login-tab" role="tab" aria-controls="login-panel">
+              Login
+            </button>
+          </menu>
+
+          <!-- Blog Panel -->
+          <article role="tabpanel" id="blog-panel">
+            <div class="blog-panel-container">
+              <!-- Left Sidebar with Tree View Navigation -->
+              <div class="tree-sidebar">
+                <ul class="tree-view">
+                  <li class="category-item" data-category="all">Folders</li>
+                  <li class="category-item" data-category="bio">bio</li>
+                  <li>
+                    <details open>
+                      <summary>What I'm Studying</summary>
+                      <ul>
+                        <li>
+                          <details open>
+                            <summary>LangChain&LangGraph</summary>
+                            <ul>
+                              <li
+                                class="category-item"
+                                data-category="JooKkoomi"
+                              >
+                                JooKkoomi
+                              </li>
+                            </ul>
+                          </details>
+                        </li>
+                      </ul>
+                    </details>
+                  </li>
+                  <li class="category-item" data-category="etc.">etc.</li>
+                  <li>
+                    <a
+                      href="https://github.com/Myophily"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      >My Github</a
+                    >
+                  </li>
+                </ul>
+              </div>
+
+              <!-- Right Main Content Area -->
+              <div class="posts-main-content">
+                <div id="posts-section">
+                  <h3>Blog Posts</h3>
+                  <div id="posts-loading">
+                    <p>Loading posts...</p>
+                    <progress max="100" value="80"></progress>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- Login Panel -->
+          <article role="tabpanel" hidden id="login-panel">
+            <div id="login-section">
+              <h3>Welcome to My Blog</h3>
+              <p>Sign in to start posting, or browse posts as a guest.</p>
+
+              <fieldset>
+                <legend>Sign In</legend>
+                <form id="login-form">
+                  <div class="field-row">
+                    <label for="email">Email:</label>
+                    <input id="email" type="email" required />
+                  </div>
+                  <div class="field-row">
+                    <label for="password">Password:</label>
+                    <input id="password" type="password" required />
+                  </div>
+                  <div class="field-row">
+                    <button type="submit" id="login-btn">Sign In</button>
+                    <button type="button" id="register-btn">
+                      Register
+                    </button>
+                  </div>
+                </form>
+              </fieldset>
+
+              <div
+                id="guest-section"
+                class="field-row"
+                style="margin-top: 20px"
+              >
+                <button id="guest-btn">Continue as Guest</button>
+                <label>Browse posts without posting</label>
+              </div>
+            </div>
+
+            <div id="user-section" style="display: none">
+              <h3>Welcome back!</h3>
+              <p>You are logged in as: <span id="user-email"></span></p>
+              <div class="field-row">
+                <button id="logout-btn">Sign Out</button>
+                <button id="switch-to-blog">View Blog Posts</button>
+              </div>
+            </div>
+            <div id="post-form-section" style="display: none">
+              <fieldset>
+                <legend>Create New Post</legend>
+                <form id="post-form">
+                  <div class="field-row-stacked">
+                    <label for="post-title">Title:</label>
+                    <input id="post-title" type="text" required />
+                  </div>
+                  <div class="field-row-stacked">
+                    <label for="post-category">Category:</label>
+                    <input
+                      id="post-category"
+                      type="text"
+                      required
+                      placeholder="Enter category name..."
+                    />
+                  </div>
+                  <div class="field-row-stacked">
+                    <label for="post-content">Content:</label>
+                    <textarea id="post-content" rows="12" required></textarea>
+                  </div>
+                  <div class="field-row-stacked">
+                    <label for="image-upload">Attach Images:</label>
+                    <input
+                      id="image-upload"
+                      type="file"
+                      accept="image/*"
+                      multiple
+                    />
+                  </div>
+                  <div
+                    id="image-preview-area"
+                    class="field-row-stacked"
+                    style="display: none"
+                  >
+                    <label>Image Previews:</label>
+                    <div
+                      id="image-previews"
+                      class="image-preview-container"
+                    ></div>
+                  </div>
+                  <div class="field-row">
+                    <button type="submit">Post</button>
+                    <button type="reset">Clear</button>
+                  </div>
+                </form>
+              </fieldset>
+            </div>
+          </article>
+        </div>
+
+        <div class="status-bar">
+          <p class="status-bar-field" id="status-user">Not logged in</p>
+          <p class="status-bar-field" id="status-posts">0 posts</p>
+          <p class="status-bar-field" id="status-time"></p>
+        </div>
+      </div>
+
+      <!-- Post Detail Window -->
+      <div
+        id="post-detail-window"
+        class="window post-detail-window"
+        style="display: none"
+      >
+        <div class="title-bar">
+          <div class="title-bar-text" id="post-detail-title">Post Details</div>
+          <div class="title-bar-controls">
+            <button id="post-detail-close" aria-label="Close"></button>
+          </div>
+        </div>
+        <div class="window-body">
+          <div id="post-detail-content">
+            <!-- Post content will be populated here -->
+          </div>
+        </div>
+      </div>
+
+      <!-- XP-style Popup/Alert Window -->
+      <div
+        id="xp-popup-window"
+        class="window xp-popup-window"
+        style="display: none"
+      >
+        <div class="title-bar">
+          <div class="title-bar-text">Myophily's Blog</div>
+          <div class="title-bar-controls">
+            <button id="popup-close" aria-label="Close"></button>
+          </div>
+        </div>
+        <div class="window-body">
+          <div id="popup-content">
+            <!-- Popup content will be populated here -->
+          </div>
+          <div style="text-align: center; margin-top: 16px">
+            <button id="popup-ok">OK</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress Bar Window -->
+      <div
+        id="progress-window"
+        class="window progress-window"
+        style="display: none"
+      >
+        <div class="title-bar">
+          <div class="title-bar-text">Please wait...</div>
+        </div>
+        <div class="window-body">
+          <div id="progress-message">Processing...</div>
+          <progress id="progress-bar" max="100"></progress>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

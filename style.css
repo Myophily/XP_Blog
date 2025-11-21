@@ -1,0 +1,749 @@
+/* Custom styles to enhance XP.css for the blog */
+
+/* Boot Screen Styling */
+.boot-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.boot-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+body {
+  margin: 0;
+  padding: 20px;
+  background: url("bg.jpg") center/cover no-repeat;
+  height: 100vh;
+  overflow: hidden;
+  font-family: "MS Sans Serif", sans-serif;
+}
+
+.window-body * {
+  font-size: inherit;
+}
+
+/* Ensure form elements scale properly */
+input,
+textarea,
+button,
+select {
+  font-size: 0.9em;
+}
+
+/* Scale up specific text elements */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-size: inherit;
+}
+
+.title-bar-text {
+  font-size: 1em;
+}
+
+.status-bar-field {
+  font-size: 0.7em;
+}
+
+.desktop {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.main-window {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  /* Default sizing for larger screens */
+  width: 1200px;
+  height: 800px;
+  max-width: 95vw;
+  max-height: 90vh;
+}
+
+/* Enhanced post styling to match XP aesthetic */
+.post {
+  background: #f0f0f0;
+  border: 2px outset #c0c0c0;
+  margin-bottom: 8px !important;
+  padding: 12px !important;
+  border-radius: 0 !important;
+}
+
+.post h4 {
+  color: #000080;
+  margin: 0 0 8px 0;
+  font-weight: bold;
+  border-bottom: 1px solid #c0c0c0;
+  padding-bottom: 4px;
+}
+
+.post p {
+  margin: 8px 0;
+  line-height: 1.4;
+  color: #000;
+  white-space: pre-line;
+}
+
+.post small {
+  color: #666;
+  font-size: 11px;
+  display: block;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dotted #c0c0c0;
+}
+
+/* Tab enhancements */
+menu[role="tablist"] button {
+  min-width: 100px;
+}
+
+/* Form field improvements */
+.field-row {
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+.field-row label {
+  min-width: 80px;
+  display: inline-block;
+}
+
+.field-row-stacked {
+  margin-bottom: 12px;
+}
+
+.field-row-stacked label {
+  font-weight: bold;
+  margin-bottom: 4px;
+  display: block;
+}
+
+/* Status bar improvements */
+.status-bar {
+  border-top: 1px solid #808080;
+  background: linear-gradient(to bottom, #e0e0e0 0%, #d0d0d0 100%);
+  flex-shrink: 0;
+}
+
+.status-bar-field {
+  font-size: 11px;
+  color: #000;
+  padding: 4px 8px;
+}
+
+/* Guest mode styling */
+.guest-notice {
+  background: #fff3cd;
+  border: 1px solid #ffeaa7;
+  color: #856404;
+  padding: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+/* Loading and error states */
+.loading {
+  text-align: center;
+  color: #666;
+  font-style: italic;
+}
+
+.error {
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  color: #721c24;
+  padding: 8px;
+  margin: 8px 0;
+  font-size: 12px;
+}
+
+/* Posts loading section */
+#posts-loading {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+}
+
+#posts-loading p {
+  margin: 0 0 12px 0;
+  font-style: italic;
+}
+
+#posts-loading progress {
+  width: 200px;
+  height: 16px;
+}
+
+/* Responsive adjustments while maintaining XP look */
+/* Large tablets and small desktops */
+@media (max-width: 1300px) {
+  .main-window {
+    width: 90%;
+    height: auto;
+    min-height: 700px;
+  }
+
+  .desktop {
+    padding: 15px;
+    align-items: flex-start;
+  }
+}
+
+/* Medium tablets */
+@media (max-width: 1024px) {
+  .main-window {
+    width: 95%;
+    height: auto;
+    min-height: 600px;
+  }
+
+  .desktop {
+    padding: 10px;
+    transform: translateY(-20px);
+  }
+}
+
+/* Small tablets and large phones */
+@media (max-width: 768px) {
+  .main-window {
+    width: 98%;
+    height: auto;
+    min-height: 500px;
+  }
+
+  .desktop {
+    padding: 5px;
+    transform: translateY(0);
+    min-height: auto;
+  }
+
+  body {
+    overflow-y: auto;
+    padding: 10px;
+  }
+}
+
+@media (max-width: 600px) {
+  .field-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .field-row label {
+    margin-bottom: 4px;
+    min-width: auto;
+  }
+
+  .field-row input,
+  .field-row button {
+    width: 100%;
+    margin-bottom: 4px;
+  }
+}
+
+/* Enhance button interactions */
+button:hover:not(:disabled) {
+  background: #e8e8e8;
+}
+
+button:active:not(:disabled) {
+  background: #d0d0d0;
+}
+
+/* Input focus styling */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 1px dotted #000;
+  outline-offset: -1px;
+}
+
+/* Scrollable posts area */
+#posts-container {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px inset #c0c0c0;
+  padding: 8px;
+  background: white;
+  margin-top: 8px;
+}
+
+/* Improved fieldset styling */
+fieldset {
+  margin-bottom: 16px;
+  background: #f0f0f0;
+}
+
+fieldset legend {
+  font-weight: bold;
+  color: #000080;
+  padding: 0 4px;
+}
+
+/* Window body content spacing */
+.window-body {
+  padding: 16px;
+  flex: 1;
+  overflow: auto;
+}
+
+/* Article (tab panels) spacing */
+article[role="tabpanel"] {
+  margin-top: 16px;
+}
+
+article[role="tabpanel"] h3 {
+  color: #000080;
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 16px;
+}
+
+/* Post Detail Window Styling */
+.post-detail-window {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 800px;
+  max-width: 90vw;
+  max-height: 80vh;
+  z-index: 1000;
+}
+
+.post-detail-window .window-body {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+/* XP-style Popup/Alert Window */
+.xp-popup-window {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 400px;
+  max-width: 90vw;
+  z-index: 1001;
+}
+
+/* Progress Bar Window */
+.progress-window {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 350px;
+  max-width: 90vw;
+  z-index: 1002;
+}
+
+.progress-window .window-body {
+  text-align: center;
+  padding: 20px;
+}
+
+#progress-message {
+  margin-bottom: 16px;
+  font-size: 1em;
+}
+
+#progress-bar {
+  width: 100%;
+  height: 20px;
+}
+
+/* Overlay for modal windows */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 999;
+  display: none;
+}
+
+/* Large Icon View Styling for Post Summaries (Windows Explorer Style) */
+.posts-container {
+  display: flex;
+  flex-wrap: wrap;
+  padding: 16px;
+  background: white;
+  border: 1px inset #c0c0c0;
+  margin-top: 8px;
+  align-content: flex-start;
+}
+
+.post-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 70px;
+  cursor: pointer;
+  transition: background-color 0.1s;
+  padding: 8px;
+  border-radius: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  margin: 0;
+  text-align: center;
+}
+
+.post-summary:hover {
+  background: rgba(0, 102, 204, 0.1) !important;
+  border: 1px dotted #0066cc;
+}
+
+.post-summary:active {
+  background: #0066cc !important;
+  color: white;
+}
+
+.post-summary:active .post-title {
+  color: white;
+}
+
+.post-summary:active .post-meta {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.post-icon {
+  width: 64px;
+  height: 64px;
+  background-image: url("icon.png");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  margin-bottom: 8px;
+  border: none;
+}
+
+.post-title {
+  font-size: 11px;
+  font-weight: normal;
+  color: #000;
+  line-height: 1.2;
+  margin: 0 0 4px 0;
+  word-wrap: break-word;
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.post-meta {
+  font-size: 9px;
+  color: #666;
+  margin: 0;
+  line-height: 1.1;
+  max-width: 100%;
+  word-wrap: break-word;
+}
+
+/* Post content truncation */
+.post-content-preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Post detail content styling */
+#post-detail-content h4 {
+  color: #000080;
+  margin: 0 0 12px 0;
+  font-weight: bold;
+  border-bottom: 2px solid #c0c0c0;
+  padding-bottom: 8px;
+}
+
+#post-detail-content p {
+  margin: 12px 0;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+#post-detail-content small {
+  color: #666;
+  font-size: 0.9em;
+  display: block;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dotted #c0c0c0;
+}
+
+/* Image Preview Styling */
+.image-preview-container {
+  border: 1px inset #c0c0c0;
+  background: white;
+  padding: 8px;
+  min-height: 60px;
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.image-preview-item {
+  position: relative;
+  display: inline-block;
+  border: 2px outset #c0c0c0;
+  margin: 0;
+  background: #f0f0f0;
+  padding: 4px;
+}
+
+.image-preview-thumbnail {
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  display: block;
+  border: 1px solid #808080;
+}
+
+.image-preview-controls {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  display: flex;
+  margin-right: 6px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.image-preview-btn {
+  font-size: 10px;
+  padding: 1px 4px;
+  min-width: auto;
+  height: 18px;
+  line-height: 1;
+  margin: 0;
+}
+
+.image-preview-name {
+  font-size: 10px;
+  text-align: center;
+  margin-top: 2px;
+  max-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Post images in content */
+.post-image {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #808080;
+  margin: 8px 0;
+  display: block;
+}
+
+#login-panel {
+  margin: 0;
+}
+
+#blog-panel {
+  margin: 0;
+}
+
+/* Code block styling in post detail view */
+#post-detail-content pre {
+  padding: 8px;
+  margin: 8px 0;
+  font-size: 12px;
+  border-radius: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: pre;
+  word-wrap: normal;
+  max-width: 100%;
+}
+
+/* Blog Panel Layout with Tree View Sidebar */
+.blog-panel-container {
+  display: flex;
+  gap: 16px;
+  height: 100%;
+}
+
+.tree-sidebar {
+  flex: 0 0 250px;
+  background: #f0f0f0;
+  border: 1px inset #c0c0c0;
+  padding: 8px;
+  overflow-y: auto;
+}
+
+.posts-main-content {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Tree View Enhancements */
+.tree-view {
+  margin: 0;
+  padding: 0;
+  font-size: 11px;
+  height: 100%;
+  min-height: 100%;
+}
+
+.tree-view li {
+  margin: 2px 0;
+}
+
+.tree-view a {
+  color: #000080;
+  text-decoration: none;
+  padding: 2px 4px;
+  display: inline-block;
+  border-radius: 0;
+}
+
+.tree-view a:hover {
+  background: #0066cc;
+  color: white;
+}
+
+.tree-view a:active {
+  background: #004499;
+  color: white;
+}
+
+/* Category item styling */
+.tree-view .category-item {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 0;
+  user-select: none;
+}
+
+.tree-view .category-item:hover {
+  background: rgba(0, 102, 204, 0.1);
+  color: #000080;
+}
+
+.tree-view .category-item:active {
+  background: #0066cc;
+  color: white;
+}
+
+.tree-view .category-item.selected {
+  background: #0066cc;
+  color: white;
+  font-weight: bold;
+}
+
+/* Summary (parent category) styling */
+.tree-view summary {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 0;
+  user-select: none;
+}
+
+.tree-view summary:hover {
+  background: rgba(0, 102, 204, 0.1);
+  color: #000080;
+}
+
+.tree-view summary:active {
+  background: #0066cc;
+  color: white;
+}
+
+.tree-view summary.selected {
+  background: #0066cc;
+  color: white;
+  font-weight: bold;
+}
+
+/* Nested tree view styling */
+.tree-view ul {
+  margin-left: 16px;
+  padding-left: 0;
+}
+
+/* Hide disclosure triangles and before content on summary elements */
+.tree-view summary::marker {
+  display: none;
+}
+
+summary {
+  list-style: none !important;
+  list-style-type: none !important;
+}
+
+/* Responsive adjustments for tree view */
+@media (max-width: 768px) {
+  .blog-panel-container {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .tree-sidebar {
+    flex: 0 0 auto;
+    max-height: 200px;
+    order: 2;
+  }
+
+  .posts-main-content {
+    order: 1;
+  }
+}
+
+@media (max-width: 600px) {
+  .tree-sidebar {
+    display: none;
+  }
+
+  .posts-container {
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .post-summary {
+    width: 100px;
+    padding: 6px;
+  }
+
+  .post-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .post-title {
+    font-size: 10px;
+  }
+
+  .post-meta {
+    font-size: 8px;
+  }
+}
