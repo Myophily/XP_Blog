@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Myophily's Blog</title>
+    <title>XP Blog</title>
     <link rel="stylesheet" href="https://unpkg.com/xp.css" />
     <link rel="stylesheet" href="style.css" />
     <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" />
@@ -18,7 +18,7 @@
     <div class="desktop">
       <div class="window main-window">
         <div class="title-bar">
-          <div class="title-bar-text">Myophily's Blog - Internet Explorer</div>
+          <div class="title-bar-text">XP Blog - Internet Explorer</div>
           <div class="title-bar-controls">
             <button aria-label="Minimize"></button>
             <button aria-label="Maximize"></button>
@@ -47,21 +47,48 @@
               <!-- Left Sidebar with Tree View Navigation -->
               <div class="tree-sidebar">
                 <ul class="tree-view">
-                  <li class="category-item" data-category="all">Folders</li>
-                  <li class="category-item" data-category="bio">bio</li>
+                  <li class="category-item" data-category="all">Examples</li>
+                  <li class="category-item" data-category="tutorials">
+                    Tutorials
+                  </li>
                   <li>
                     <details open>
-                      <summary>What I'm Studying</summary>
+                      <summary>Code Samples</summary>
                       <ul>
                         <li>
                           <details open>
-                            <summary>LangChain&LangGraph</summary>
+                            <summary>JavaScript</summary>
                             <ul>
                               <li
                                 class="category-item"
-                                data-category="JooKkoomi"
+                                data-category="async-await"
                               >
-                                JooKkoomi
+                                Async/Await
+                              </li>
+                              <li
+                                class="category-item"
+                                data-category="promises"
+                              >
+                                Promises
+                              </li>
+                            </ul>
+                          </details>
+                        </li>
+                        <li>
+                          <details>
+                            <summary>Python</summary>
+                            <ul>
+                              <li
+                                class="category-item"
+                                data-category="decorators"
+                              >
+                                Decorators
+                              </li>
+                              <li
+                                class="category-item"
+                                data-category="generators"
+                              >
+                                Generators
                               </li>
                             </ul>
                           </details>
@@ -69,7 +96,7 @@
                       </ul>
                     </details>
                   </li>
-                  <li class="category-item" data-category="etc.">etc.</li>
+                  <li class="category-item" data-category="demos">Demos</li>
                   <li>
                     <a
                       href="https://github.com/Myophily"
@@ -113,9 +140,7 @@
                   </div>
                   <div class="field-row">
                     <button type="submit" id="login-btn">Sign In</button>
-                    <button type="button" id="register-btn">
-                      Register
-                    </button>
+                    <button type="button" id="register-btn">Register</button>
                   </div>
                 </form>
               </fieldset>
@@ -222,7 +247,7 @@
         style="display: none"
       >
         <div class="title-bar">
-          <div class="title-bar-text">Myophily's Blog</div>
+          <div class="title-bar-text">XP Blog</div>
           <div class="title-bar-controls">
             <button id="popup-close" aria-label="Close"></button>
           </div>
