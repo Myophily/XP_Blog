@@ -40,7 +40,7 @@ A nostalgic blog application styled after Windows XP, built with vanilla JavaScr
 
    ```bash
    git clone https://github.com/Myophily/XP_Blog.git
-   cd YOUR_REPO_NAME
+   cd XP_Blog
    ```
 
 2. **Set up Supabase**
