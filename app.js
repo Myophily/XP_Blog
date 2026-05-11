@@ -1,13 +1,12 @@
-// Supabase configuration - YOU NEED TO REPLACE THESE WITH YOUR ACTUAL SUPABASE PROJECT DETAILS
-const SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co";
-const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_PUBLIC_KEY";
-
+const CONFIG_PLACEHOLDERS = new Set([
+  "https://YOUR_PROJECT_ID.supabase.co",
+  "YOUR_SUPABASE_ANON_PUBLIC_KEY",
+]);
+let authUnavailableMessage = "";
+const appConfig = readAppConfig();
 let supabaseClient;
-try {
-  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-} catch (e) {
-  console.error("Supabase init failed:", e);
-}
+
+supabaseClient = createSupabaseClient(appConfig);
 
 // Global state
 let currentUser = null;
@@ -28,6 +27,88 @@ let postsLoadRequestId = 0;
 
 const CATEGORY_POST_LOADING_MS = 2000;
 
+function readAppConfig() {
+  const configElement = document.getElementById("xp-blog-config");
+
+  if (!configElement) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(configElement.textContent || "{}");
+  } catch (error) {
+    console.error("Failed to parse xp-blog-config:", error);
+    authUnavailableMessage =
+      "Supabase configuration could not be read. Check the xp-blog-config JSON block.";
+    return {};
+  }
+}
+
+function createSupabaseClient(config) {
+  const url = String(config.url || "").trim();
+  const anonKey = String(config.anonKey || "").trim();
+
+  if (
+    !url ||
+    !anonKey ||
+    CONFIG_PLACEHOLDERS.has(url) ||
+    CONFIG_PLACEHOLDERS.has(anonKey)
+  ) {
+    if (!authUnavailableMessage) {
+      authUnavailableMessage =
+        "Supabase is not configured yet. Add your project URL and anon public key in the xp-blog-config block.";
+    }
+    return null;
+  }
+
+  if (!window.supabase) {
+    authUnavailableMessage =
+      "Supabase could not be loaded. Check your connection and try again.";
+    return null;
+  }
+
+  try {
+    return window.supabase.createClient(url, anonKey);
+  } catch (error) {
+    console.error("Supabase init failed:", error);
+    authUnavailableMessage =
+      "Supabase could not be initialized. Check the URL and anon public key in xp-blog-config.";
+    return null;
+  }
+}
+
+function applyAppConfig() {
+  const siteTitle = String(appConfig.siteTitle || "").trim();
+  const sourceUrl = String(appConfig.sourceUrl || "").trim();
+  const sourceLabel = String(appConfig.sourceLabel || "").trim();
+
+  if (siteTitle) {
+    document.title = siteTitle;
+
+    const mainTitle = document.querySelector(".main-window > .title-bar .title-bar-text");
+    if (mainTitle) {
+      mainTitle.textContent = `${siteTitle} - Internet Explorer`;
+    }
+
+    document
+      .querySelectorAll("#xp-popup-window .title-bar-text, #xp-confirm-window .title-bar-text")
+      .forEach((title) => {
+        title.textContent = siteTitle;
+      });
+  }
+
+  const sourceLink = document.querySelector(".tree-sidebar-footer a");
+  if (sourceLink) {
+    if (sourceUrl) {
+      sourceLink.href = sourceUrl;
+    }
+
+    if (sourceLabel) {
+      sourceLink.textContent = sourceLabel;
+    }
+  }
+}
+
 // DOM elements
 const loginTab = document.getElementById("login-tab");
 const blogTab = document.getElementById("blog-tab");
@@ -38,6 +119,7 @@ const userSection = document.getElementById("user-section");
 const postFormSection = document.getElementById("post-form-section");
 const loginForm = document.getElementById("login-form");
 const postForm = document.getElementById("post-form");
+const authStatus = document.getElementById("auth-status");
 const postsSection = document.getElementById("posts-section");
 const statusUser = document.getElementById("status-user");
 const statusPosts = document.getElementById("status-posts");
@@ -69,6 +151,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }, 3000);
 
+  applyAppConfig();
   setupEventListeners();
   updateStatusTime();
   setInterval(updateStatusTime, 1000);
@@ -243,9 +326,31 @@ function setupEventListeners() {
 }
 
 function disableAuthUI() {
-  document.getElementById("login-btn").disabled = true;
+  document.getElementById("login-btn").disabled = false;
   document.getElementById("register-btn").disabled = true;
   document.getElementById("guest-btn").disabled = false;
+  showAuthStatus(getAuthUnavailableMessage());
+}
+
+function showAuthStatus(message) {
+  if (!authStatus) return;
+
+  authStatus.textContent = message;
+  authStatus.hidden = false;
+}
+
+function hideAuthStatus() {
+  if (!authStatus) return;
+
+  authStatus.textContent = "";
+  authStatus.hidden = true;
+}
+
+function getAuthUnavailableMessage() {
+  return (
+    authUnavailableMessage ||
+    "Supabase is not available right now. Check your configuration and try again."
+  );
 }
 
 // Tab switching functionality
@@ -307,11 +412,20 @@ async function checkOwnerStatus() {
 // Handle user login
 async function handleLogin(event) {
   event.preventDefault();
+
+  if (!supabaseClient) {
+    const message = getAuthUnavailableMessage();
+    showAuthStatus(message);
+    showAlert(message);
+    return;
+  }
+
   const email = document.getElementById("email").value;
   const password = document.getElementById("password").value;
 
   showProgressBar("Signing in...", async () => {
     try {
+      hideAuthStatus();
       const { data, error } = await supabaseClient.auth.signInWithPassword({
         email,
         password,
@@ -334,6 +448,13 @@ async function handleLogin(event) {
 
 // Handle user registration
 async function handleRegister() {
+  if (!supabaseClient) {
+    const message = getAuthUnavailableMessage();
+    showAuthStatus(message);
+    showAlert(message);
+    return;
+  }
+
   const email = document.getElementById("email").value;
   const password = document.getElementById("password").value;
 
@@ -406,6 +527,7 @@ function updateUIForLoggedInUser() {
   userSection.style.display = "block";
   postFormSection.style.display = isOwner ? "block" : "none";
   document.getElementById("user-email").textContent = currentUser.email;
+  hideAuthStatus();
   statusUser.textContent = isOwner
     ? `Owner: ${currentUser.email}`
     : `Logged in as: ${currentUser.email} (read only)`;
@@ -417,6 +539,7 @@ function updateUIForGuest() {
   loginSection.style.display = "none";
   userSection.style.display = "none";
   postFormSection.style.display = "none";
+  hideAuthStatus();
   statusUser.textContent = "Browsing as guest";
   updateOwnerControls();
 }
@@ -430,6 +553,11 @@ function updateUIForLoggedOut() {
 
   document.getElementById("email").value = "";
   document.getElementById("password").value = "";
+  if (supabaseClient) {
+    hideAuthStatus();
+  } else {
+    showAuthStatus(getAuthUnavailableMessage());
+  }
   clearImageUploads();
   updateOwnerControls();
 }
@@ -1577,6 +1705,7 @@ function showProgressBar(message, callback, max = 100) {
   const progressBar = document.getElementById("progress-bar");
   const overlay = getOrCreateOverlay();
   const maximum = Number(max) || 100;
+  const minVisiblePromise = waitForMinimumLoading(300);
 
   if (progressBar._animationInterval) {
     clearInterval(progressBar._animationInterval);
@@ -1590,39 +1719,32 @@ function showProgressBar(message, callback, max = 100) {
   overlay.style.display = "block";
   progressWindow.style.display = "block";
 
-  const duration = 600;
-  const frameRate = 60;
-  const totalFrames = (duration / 1000) * frameRate;
-  const increment = maximum / totalFrames;
-  let frameCount = 0;
+  let currentValue = 0;
+  const softMaximum = Math.max(maximum - 5, 1);
+  const increment = Math.max(maximum / 40, 1);
 
-  return new Promise((resolve, reject) => {
-    const finish = async () => {
-      clearInterval(progressBar._animationInterval);
-      progressBar._animationInterval = null;
-      hideProgressBar();
+  progressBar._animationInterval = setInterval(() => {
+    currentValue = Math.min(currentValue + increment, softMaximum);
+    progressBar.setAttribute("value", Math.round(currentValue));
+  }, 75);
 
-      try {
-        const result =
-          callback && typeof callback === "function" ? await callback() : undefined;
-        resolve(result);
-      } catch (error) {
-        reject(error);
+  return Promise.resolve()
+    .then(() =>
+      callback && typeof callback === "function" ? callback() : undefined
+    )
+    .then(
+      async (result) => {
+        await minVisiblePromise;
+        progressBar.setAttribute("value", maximum);
+        hideProgressBar();
+        return result;
+      },
+      async (error) => {
+        await minVisiblePromise;
+        hideProgressBar();
+        throw error;
       }
-    };
-
-    progressBar._animationInterval = setInterval(() => {
-      frameCount++;
-      const currentValue = Math.min(increment * frameCount, maximum);
-      progressBar.setAttribute("value", Math.round(currentValue));
-
-      if (frameCount >= totalFrames) {
-        clearInterval(progressBar._animationInterval);
-        progressBar._animationInterval = null;
-        setTimeout(finish, 50);
-      }
-    }, 1000 / frameRate);
-  });
+    );
 }
 
 function hideProgressBar() {

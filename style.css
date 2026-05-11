@@ -145,6 +145,16 @@ menu[role="tablist"] button {
   display: block;
 }
 
+.auth-status {
+  background: #fff8d6;
+  border: 1px solid #d6b656;
+  color: #3f2f00;
+  font-size: 12px;
+  line-height: 1.35;
+  margin: 10px 0 0;
+  padding: 6px 8px;
+}
+
 /* Status bar improvements */
 .status-bar {
   border-top: 1px solid #808080;

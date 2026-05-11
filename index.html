@@ -108,6 +108,7 @@
                       Register
                     </button>
                   </div>
+                  <p id="auth-status" class="auth-status" hidden></p>
                 </form>
               </fieldset>
 
@@ -342,6 +343,15 @@
       </div>
     </div>
 
+    <script id="xp-blog-config" type="application/json">
+      {
+        "url": "https://YOUR_PROJECT_ID.supabase.co",
+        "anonKey": "YOUR_SUPABASE_ANON_PUBLIC_KEY",
+        "siteTitle": "Myophily's Blog",
+        "sourceUrl": "https://github.com/Myophily",
+        "sourceLabel": "My Github"
+      }
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="app.js"></script>
   </body>
