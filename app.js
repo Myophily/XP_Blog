@@ -114,8 +114,7 @@ let authFlowInProgress = false;
 let currentAccessToken = "";
 
 const CATEGORY_POST_LOADING_MS = 2000;
-const PROGRESS_MIN_VISIBLE_MS = 900;
-const PROGRESS_COMPLETION_MS = 650;
+const PROGRESS_ANIMATION_MS = 1200;
 const PROGRESS_DONE_PAUSE_MS = 180;
 
 // DOM elements
@@ -1867,7 +1866,6 @@ function showProgressBar(message, callback, max = 100) {
   const progressBar = document.getElementById("progress-bar");
   const overlay = getOrCreateOverlay();
   const maximum = Number(max) || 100;
-  const minVisiblePromise = waitForMinimumLoading(PROGRESS_MIN_VISIBLE_MS);
 
   if (progressBar._animationInterval) {
     clearInterval(progressBar._animationInterval);
@@ -1886,42 +1884,20 @@ function showProgressBar(message, callback, max = 100) {
   overlay.style.display = "block";
   progressWindow.style.display = "block";
 
-  let currentValue = 0;
-  const softMaximum = Math.max(maximum * 0.9, 1);
-  const increment = Math.max(maximum / 55, 1);
-
-  progressBar._animationInterval = setInterval(() => {
-    currentValue = Math.min(currentValue + increment, softMaximum);
-    progressBar.setAttribute("value", Math.round(currentValue));
-  }, 75);
-
-  const finishProgress = async () => {
-    if (progressBar._animationInterval) {
-      clearInterval(progressBar._animationInterval);
-      progressBar._animationInterval = null;
-    }
-
-    await minVisiblePromise;
-    await animateProgressBarTo(progressBar, maximum, PROGRESS_COMPLETION_MS);
+  return (async () => {
+    await animateProgressBarTo(progressBar, maximum, PROGRESS_ANIMATION_MS);
     progressBar.setAttribute("value", maximum);
     await waitForMinimumLoading(PROGRESS_DONE_PAUSE_MS);
-    hideProgressBar();
-  };
 
-  return Promise.resolve()
-    .then(() =>
-      callback && typeof callback === "function" ? callback() : undefined
-    )
-    .then(
-      async (result) => {
-        await finishProgress();
-        return result;
-      },
-      async (error) => {
-        await finishProgress();
-        throw error;
+    try {
+      if (callback && typeof callback === "function") {
+        return await callback();
       }
-    );
+      return undefined;
+    } finally {
+      hideProgressBar();
+    }
+  })();
 }
 
 function animateProgressBarTo(progressBar, targetValue, durationMs) {
