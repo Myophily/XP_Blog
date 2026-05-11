@@ -1,27 +1,10 @@
-const SUPABASE_CONFIG = readAppConfig();
-const SUPABASE_URL = getConfigUrl(SUPABASE_CONFIG.url, "", {
-  allowRelative: false,
-});
-const SUPABASE_ANON_KEY = getConfigText(SUPABASE_CONFIG.anonKey, "");
-const SITE_TITLE = getConfigText(SUPABASE_CONFIG.siteTitle, "XP Blog");
-const SOURCE_URL = getConfigUrl(
-  SUPABASE_CONFIG.sourceUrl || SUPABASE_CONFIG.githubUrl,
-  ""
-);
-const SOURCE_LABEL = getConfigText(SUPABASE_CONFIG.sourceLabel, "Source Code");
-const SUPABASE_CONFIG_MESSAGE =
-  "Supabase is not configured. Set url and anonKey in the xp-blog-config block in index.html.";
+// Supabase configuration - YOU NEED TO REPLACE THESE WITH YOUR ACTUAL SUPABASE PROJECT DETAILS
+const SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co";
+const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_PUBLIC_KEY";
 
-let supabaseClient = null;
+let supabaseClient;
 try {
-  if (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) {
-    supabaseClient = window.supabase.createClient(
-      SUPABASE_URL,
-      SUPABASE_ANON_KEY
-    );
-  } else {
-    console.warn(SUPABASE_CONFIG_MESSAGE);
-  }
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 } catch (e) {
   console.error("Supabase init failed:", e);
 }
@@ -76,12 +59,9 @@ const categorySortOrderInput = document.getElementById("category-sort-order");
 const categorySaveBtn = document.getElementById("category-save-btn");
 const categoryHideBtn = document.getElementById("category-hide-btn");
 const categoryDeleteBtn = document.getElementById("category-delete-btn");
-const sourceLink = document.getElementById("source-link");
 
 // Initialize the app
 document.addEventListener("DOMContentLoaded", async () => {
-  applySiteConfig();
-
   const bootScreen = document.getElementById("boot-screen");
   setTimeout(() => {
     if (bootScreen) {
@@ -268,75 +248,6 @@ function disableAuthUI() {
   document.getElementById("guest-btn").disabled = false;
 }
 
-function applySiteConfig() {
-  document.title = SITE_TITLE;
-
-  document.querySelectorAll("[data-site-title]").forEach((element) => {
-    element.textContent = SITE_TITLE;
-  });
-
-  document.querySelectorAll("[data-browser-title]").forEach((element) => {
-    element.textContent = `${SITE_TITLE} - Internet Explorer`;
-  });
-
-  document.querySelectorAll("[data-welcome-title]").forEach((element) => {
-    element.textContent = `Welcome to ${SITE_TITLE}`;
-  });
-
-  if (!sourceLink) return;
-
-  if (!SOURCE_URL) {
-    sourceLink.hidden = true;
-    return;
-  }
-
-  sourceLink.hidden = false;
-  sourceLink.href = SOURCE_URL;
-  sourceLink.textContent = SOURCE_LABEL;
-}
-
-function readAppConfig() {
-  const configElement = document.getElementById("xp-blog-config");
-  if (!configElement) return {};
-
-  try {
-    const parsed = JSON.parse(configElement.textContent || "{}");
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed;
-    }
-  } catch (error) {
-    console.warn("Invalid inline app config:", error);
-  }
-
-  return {};
-}
-
-function getConfigText(value, fallback) {
-  const text = String(value || "").trim();
-  return text || fallback;
-}
-
-function getConfigUrl(value, fallback = "", options = {}) {
-  const candidate = String(value || fallback || "").trim();
-  if (!candidate) return "";
-
-  try {
-    const parsed =
-      options.allowRelative === false
-        ? new URL(candidate)
-        : new URL(candidate, window.location.href);
-    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-      return parsed.href;
-    }
-  } catch (error) {
-    console.warn("Invalid URL in app config:", error);
-  }
-
-  return fallback && candidate !== fallback
-    ? getConfigUrl(fallback, "", options)
-    : "";
-}
-
 // Tab switching functionality
 function switchTab(tab) {
   showProgressBar("Loading...", async () => {
@@ -396,12 +307,6 @@ async function checkOwnerStatus() {
 // Handle user login
 async function handleLogin(event) {
   event.preventDefault();
-
-  if (!supabaseClient) {
-    showAlert(SUPABASE_CONFIG_MESSAGE);
-    return;
-  }
-
   const email = document.getElementById("email").value;
   const password = document.getElementById("password").value;
 
@@ -429,11 +334,6 @@ async function handleLogin(event) {
 
 // Handle user registration
 async function handleRegister() {
-  if (!supabaseClient) {
-    showAlert(SUPABASE_CONFIG_MESSAGE);
-    return;
-  }
-
   const email = document.getElementById("email").value;
   const password = document.getElementById("password").value;
 
@@ -481,11 +381,6 @@ function handleGuestMode() {
 
 // Handle user logout
 async function handleLogout() {
-  if (!supabaseClient) {
-    showAlert(SUPABASE_CONFIG_MESSAGE);
-    return;
-  }
-
   showProgressBar("Signing out...", async () => {
     try {
       await supabaseClient.auth.signOut();
@@ -687,9 +582,7 @@ function renderCategoryTree() {
     >All Posts</li>
   `;
 
-  if (categoryLoadFailed && !supabaseClient) {
-    treeHtml += `<li class="tree-empty">Supabase is not configured.</li>`;
-  } else if (categoryLoadFailed) {
+  if (categoryLoadFailed) {
     treeHtml += `<li class="tree-empty">Failed to load categories.</li>`;
   } else if (rootCategories.length === 0) {
     treeHtml += `<li class="tree-empty">No categories yet.</li>`;
@@ -907,12 +800,6 @@ function renderCategoryManagerTree() {
   if (!categoryManagerTree) return;
 
   const rootCategories = getChildCategories(null);
-
-  if (categoryLoadFailed && !supabaseClient) {
-    categoryManagerTree.innerHTML =
-      '<li class="tree-empty">Supabase is not configured.</li>';
-    return;
-  }
 
   if (categoryLoadFailed) {
     categoryManagerTree.innerHTML =
@@ -1394,7 +1281,6 @@ async function handleCreatePost(event) {
           content,
           category_id: categoryId,
           author_email: currentUser.email,
-          created_by: currentUser.id,
           created_at: new Date().toISOString(),
           images: uploadedImages.length > 0 ? uploadedImages : null,
         },
