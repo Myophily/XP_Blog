@@ -114,6 +114,9 @@ let authFlowInProgress = false;
 let currentAccessToken = "";
 
 const CATEGORY_POST_LOADING_MS = 2000;
+const PROGRESS_MIN_VISIBLE_MS = 900;
+const PROGRESS_COMPLETION_MS = 650;
+const PROGRESS_DONE_PAUSE_MS = 180;
 
 // DOM elements
 const loginTab = document.getElementById("login-tab");
@@ -1864,11 +1867,16 @@ function showProgressBar(message, callback, max = 100) {
   const progressBar = document.getElementById("progress-bar");
   const overlay = getOrCreateOverlay();
   const maximum = Number(max) || 100;
-  const minVisiblePromise = waitForMinimumLoading(300);
+  const minVisiblePromise = waitForMinimumLoading(PROGRESS_MIN_VISIBLE_MS);
 
   if (progressBar._animationInterval) {
     clearInterval(progressBar._animationInterval);
     progressBar._animationInterval = null;
+  }
+
+  if (progressBar._completionAnimation) {
+    cancelAnimationFrame(progressBar._completionAnimation);
+    progressBar._completionAnimation = null;
   }
 
   progressMessage.textContent = message || "Processing...";
@@ -1879,13 +1887,26 @@ function showProgressBar(message, callback, max = 100) {
   progressWindow.style.display = "block";
 
   let currentValue = 0;
-  const softMaximum = Math.max(maximum - 5, 1);
-  const increment = Math.max(maximum / 40, 1);
+  const softMaximum = Math.max(maximum * 0.9, 1);
+  const increment = Math.max(maximum / 55, 1);
 
   progressBar._animationInterval = setInterval(() => {
     currentValue = Math.min(currentValue + increment, softMaximum);
     progressBar.setAttribute("value", Math.round(currentValue));
   }, 75);
+
+  const finishProgress = async () => {
+    if (progressBar._animationInterval) {
+      clearInterval(progressBar._animationInterval);
+      progressBar._animationInterval = null;
+    }
+
+    await minVisiblePromise;
+    await animateProgressBarTo(progressBar, maximum, PROGRESS_COMPLETION_MS);
+    progressBar.setAttribute("value", maximum);
+    await waitForMinimumLoading(PROGRESS_DONE_PAUSE_MS);
+    hideProgressBar();
+  };
 
   return Promise.resolve()
     .then(() =>
@@ -1893,17 +1914,46 @@ function showProgressBar(message, callback, max = 100) {
     )
     .then(
       async (result) => {
-        await minVisiblePromise;
-        progressBar.setAttribute("value", maximum);
-        hideProgressBar();
+        await finishProgress();
         return result;
       },
       async (error) => {
-        await minVisiblePromise;
-        hideProgressBar();
+        await finishProgress();
         throw error;
       }
     );
+}
+
+function animateProgressBarTo(progressBar, targetValue, durationMs) {
+  const startValue = Number(progressBar.getAttribute("value")) || 0;
+  const distance = targetValue - startValue;
+
+  if (distance <= 0 || durationMs <= 0) {
+    progressBar.setAttribute("value", targetValue);
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    const startTime = performance.now();
+
+    const step = (timestamp) => {
+      const elapsed = timestamp - startTime;
+      const progress = Math.min(elapsed / durationMs, 1);
+      const easedProgress = 1 - Math.pow(1 - progress, 3);
+      const value = startValue + distance * easedProgress;
+
+      progressBar.setAttribute("value", Math.round(value));
+
+      if (progress < 1) {
+        progressBar._completionAnimation = requestAnimationFrame(step);
+      } else {
+        progressBar._completionAnimation = null;
+        resolve();
+      }
+    };
+
+    progressBar._completionAnimation = requestAnimationFrame(step);
+  });
 }
 
 function hideProgressBar() {
@@ -1913,6 +1963,11 @@ function hideProgressBar() {
   if (progressBar._animationInterval) {
     clearInterval(progressBar._animationInterval);
     progressBar._animationInterval = null;
+  }
+
+  if (progressBar._completionAnimation) {
+    cancelAnimationFrame(progressBar._completionAnimation);
+    progressBar._completionAnimation = null;
   }
 
   progressWindow.style.display = "none";
