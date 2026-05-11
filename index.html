@@ -18,7 +18,9 @@
     <div class="desktop">
       <div class="window main-window">
         <div class="title-bar">
-          <div class="title-bar-text">XP Blog - Internet Explorer</div>
+          <div class="title-bar-text" data-browser-title>
+            XP Blog - Internet Explorer
+          </div>
           <div class="title-bar-controls">
             <button aria-label="Minimize"></button>
             <button aria-label="Maximize"></button>
@@ -46,66 +48,32 @@
             <div class="blog-panel-container">
               <!-- Left Sidebar with Tree View Navigation -->
               <div class="tree-sidebar">
-                <ul class="tree-view">
-                  <li class="category-item" data-category="all">Examples</li>
-                  <li class="category-item" data-category="tutorials">
-                    Tutorials
-                  </li>
-                  <li>
-                    <details open>
-                      <summary>Code Samples</summary>
-                      <ul>
-                        <li>
-                          <details open>
-                            <summary>JavaScript</summary>
-                            <ul>
-                              <li
-                                class="category-item"
-                                data-category="async-await"
-                              >
-                                Async/Await
-                              </li>
-                              <li
-                                class="category-item"
-                                data-category="promises"
-                              >
-                                Promises
-                              </li>
-                            </ul>
-                          </details>
-                        </li>
-                        <li>
-                          <details>
-                            <summary>Python</summary>
-                            <ul>
-                              <li
-                                class="category-item"
-                                data-category="decorators"
-                              >
-                                Decorators
-                              </li>
-                              <li
-                                class="category-item"
-                                data-category="generators"
-                              >
-                                Generators
-                              </li>
-                            </ul>
-                          </details>
-                        </li>
-                      </ul>
-                    </details>
-                  </li>
-                  <li class="category-item" data-category="demos">Demos</li>
-                  <li>
-                    <a
-                      href="https://github.com/Myophily"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      >My Github</a
-                    >
-                  </li>
+                <div class="tree-sidebar-header">
+                  <strong>Folders</strong>
+                  <button id="manage-categories-btn" hidden>Manage</button>
+                </div>
+
+                <ul id="category-tree" class="tree-view">
+                  <li>Loading folders...</li>
                 </ul>
+
+                <div class="mobile-category-filter">
+                  <label for="mobile-category-select">Category:</label>
+                  <select id="mobile-category-select">
+                    <option value="">All Posts</option>
+                  </select>
+                </div>
+
+                <div class="tree-sidebar-footer">
+                  <a
+                    id="source-link"
+                    href=""
+                    hidden
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >Source Code</a
+                  >
+                </div>
               </div>
 
               <!-- Right Main Content Area -->
@@ -124,7 +92,7 @@
           <!-- Login Panel -->
           <article role="tabpanel" hidden id="login-panel">
             <div id="login-section">
-              <h3>Welcome to My Blog</h3>
+              <h3 data-welcome-title>Welcome to XP Blog</h3>
               <p>Sign in to start posting, or browse posts as a guest.</p>
 
               <fieldset>
@@ -140,7 +108,9 @@
                   </div>
                   <div class="field-row">
                     <button type="submit" id="login-btn">Sign In</button>
-                    <button type="button" id="register-btn">Register</button>
+                    <button type="button" id="register-btn" disabled>
+                      Register
+                    </button>
                   </div>
                 </form>
               </fieldset>
@@ -172,13 +142,15 @@
                     <input id="post-title" type="text" required />
                   </div>
                   <div class="field-row-stacked">
-                    <label for="post-category">Category:</label>
-                    <input
-                      id="post-category"
-                      type="text"
-                      required
-                      placeholder="Enter category name..."
-                    />
+                    <label for="post-category-id">Category:</label>
+                    <div class="category-select-row">
+                      <select id="post-category-id" required>
+                        <option value="">Select category...</option>
+                      </select>
+                      <button type="button" id="quick-add-category-btn" hidden>
+                        New Folder
+                      </button>
+                    </div>
                   </div>
                   <div class="field-row-stacked">
                     <label for="post-content">Content:</label>
@@ -240,6 +212,79 @@
         </div>
       </div>
 
+      <!-- Category Manager Window -->
+      <div
+        id="category-manager-window"
+        class="window category-manager-window"
+        style="display: none"
+      >
+        <div class="title-bar">
+          <div class="title-bar-text">Category Manager</div>
+          <div class="title-bar-controls">
+            <button id="category-manager-close" aria-label="Close"></button>
+          </div>
+        </div>
+        <div class="window-body">
+          <div class="category-manager-toolbar">
+            <button id="category-new-btn">New Folder</button>
+            <button id="category-hide-btn" disabled>Hide</button>
+            <button id="category-delete-btn" disabled>Delete</button>
+            <button id="category-refresh-btn">Refresh</button>
+          </div>
+
+          <div class="category-manager-layout">
+            <div class="category-manager-tree">
+              <ul id="category-manager-tree" class="tree-view">
+                <li>Loading folders...</li>
+              </ul>
+            </div>
+
+            <form id="category-edit-form" class="category-properties">
+              <fieldset>
+                <legend>Category Properties</legend>
+
+                <div class="field-row-stacked">
+                  <label for="category-name">Name:</label>
+                  <input id="category-name" type="text" maxlength="50" required />
+                </div>
+
+                <div class="field-row-stacked">
+                  <label for="category-slug">Slug:</label>
+                  <input id="category-slug" type="text" required />
+                </div>
+
+                <div class="field-row-stacked">
+                  <label for="category-parent-id">Parent:</label>
+                  <select id="category-parent-id">
+                    <option value="">All Categories</option>
+                  </select>
+                </div>
+
+                <div class="field-row-stacked">
+                  <label for="category-description">Description:</label>
+                  <textarea id="category-description" rows="3"></textarea>
+                </div>
+
+                <div class="field-row">
+                  <input id="category-is-visible" type="checkbox" checked />
+                  <label for="category-is-visible">Show in sidebar</label>
+                </div>
+
+                <div class="field-row-stacked">
+                  <label for="category-sort-order">Sort Order:</label>
+                  <input id="category-sort-order" type="number" value="0" />
+                </div>
+
+                <div class="field-row">
+                  <button type="submit" id="category-save-btn">Save</button>
+                  <button type="button" id="category-edit-cancel">Cancel</button>
+                </div>
+              </fieldset>
+            </form>
+          </div>
+        </div>
+      </div>
+
       <!-- XP-style Popup/Alert Window -->
       <div
         id="xp-popup-window"
@@ -247,7 +292,7 @@
         style="display: none"
       >
         <div class="title-bar">
-          <div class="title-bar-text">XP Blog</div>
+          <div class="title-bar-text" data-site-title>XP Blog</div>
           <div class="title-bar-controls">
             <button id="popup-close" aria-label="Close"></button>
           </div>
@@ -258,6 +303,29 @@
           </div>
           <div style="text-align: center; margin-top: 16px">
             <button id="popup-ok">OK</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- XP-style Confirm Window -->
+      <div
+        id="xp-confirm-window"
+        class="window xp-confirm-window"
+        style="display: none"
+      >
+        <div class="title-bar">
+          <div class="title-bar-text" data-site-title>XP Blog</div>
+          <div class="title-bar-controls">
+            <button id="confirm-close" aria-label="Close"></button>
+          </div>
+        </div>
+        <div class="window-body">
+          <div id="confirm-content">
+            <!-- Confirm content will be populated here -->
+          </div>
+          <div class="confirm-actions">
+            <button id="confirm-ok">OK</button>
+            <button id="confirm-cancel">Cancel</button>
           </div>
         </div>
       </div>
@@ -279,6 +347,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

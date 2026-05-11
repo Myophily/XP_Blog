@@ -1,34 +1,47 @@
-// Supabase configuration - YOU NEED TO REPLACE THESE WITH YOUR ACTUAL SUPABASE PROJECT DETAILS
-const SUPABASE_URL = "YOUR_SUPABASE_URL_HERE";
-const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY_HERE";
+const SUPABASE_CONFIG = window.XP_BLOG_SUPABASE_CONFIG || {};
+const SUPABASE_URL = SUPABASE_CONFIG.url || "";
+const SUPABASE_ANON_KEY = SUPABASE_CONFIG.anonKey || "";
+const SITE_TITLE = getConfigText(SUPABASE_CONFIG.siteTitle, "XP Blog");
+const SOURCE_URL = getConfigUrl(
+  SUPABASE_CONFIG.sourceUrl || SUPABASE_CONFIG.githubUrl,
+  ""
+);
+const SOURCE_LABEL = getConfigText(SUPABASE_CONFIG.sourceLabel, "Source Code");
 
-// Initialize Supabase with error handling for graceful degradation
-let supabase = null;
+let supabaseClient = null;
 try {
-  if (window.supabase && SUPABASE_URL !== "YOUR_SUPABASE_URL_HERE" && SUPABASE_ANON_KEY !== "YOUR_SUPABASE_ANON_KEY_HERE") {
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  if (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) {
+    supabaseClient = window.supabase.createClient(
+      SUPABASE_URL,
+      SUPABASE_ANON_KEY
+    );
   } else {
-    console.warn("Supabase not configured - running in guest-only mode");
+    console.warn(
+      "Supabase is not configured. Create config.js from config.example.js."
+    );
   }
-} catch (error) {
-  console.error("Failed to initialize Supabase:", error);
-  console.warn("Running in guest-only mode");
+} catch (e) {
+  console.error("Supabase init failed:", e);
 }
 
 // Global state
 let currentUser = null;
-let isGuest = !supabase; // Default to guest mode if Supabase is not configured
+let isGuest = false;
+let isOwner = false;
+let categories = [];
+let categoryPostCounts = new Map();
+let categoryLoadFailed = false;
+let currentCategoryId = null;
+let currentCategoryIds = null;
+let currentCategoryLabel = "All Posts";
+let selectedManagerCategoryId = null;
+let categoryFormMode = "create";
 let uploadedImages = [];
 let imageCounter = 0;
-let currentCategoryFilter = null; // Track the selected category filter
+let pendingConfirmResolve = null;
+let postsLoadRequestId = 0;
 
-// Hide boot screen after 3 seconds - execute immediately to ensure it always runs
-setTimeout(() => {
-  const bootScreen = document.getElementById("boot-screen");
-  if (bootScreen) {
-    bootScreen.style.display = "none";
-  }
-}, 3000);
+const CATEGORY_POST_LOADING_MS = 2000;
 
 // DOM elements
 const loginTab = document.getElementById("login-tab");
@@ -44,33 +57,60 @@ const postsSection = document.getElementById("posts-section");
 const statusUser = document.getElementById("status-user");
 const statusPosts = document.getElementById("status-posts");
 const statusTime = document.getElementById("status-time");
+const categoryTree = document.getElementById("category-tree");
+const mobileCategorySelect = document.getElementById("mobile-category-select");
+const postCategorySelect = document.getElementById("post-category-id");
+const manageCategoriesBtn = document.getElementById("manage-categories-btn");
+const quickAddCategoryBtn = document.getElementById("quick-add-category-btn");
+const categoryManagerWindow = document.getElementById("category-manager-window");
+const categoryManagerTree = document.getElementById("category-manager-tree");
+const categoryEditForm = document.getElementById("category-edit-form");
+const categoryNameInput = document.getElementById("category-name");
+const categorySlugInput = document.getElementById("category-slug");
+const categoryParentSelect = document.getElementById("category-parent-id");
+const categoryDescriptionInput = document.getElementById("category-description");
+const categoryVisibleInput = document.getElementById("category-is-visible");
+const categorySortOrderInput = document.getElementById("category-sort-order");
+const categorySaveBtn = document.getElementById("category-save-btn");
+const categoryHideBtn = document.getElementById("category-hide-btn");
+const categoryDeleteBtn = document.getElementById("category-delete-btn");
+const sourceLink = document.getElementById("source-link");
 
 // Initialize the app
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+  applySiteConfig();
+
+  const bootScreen = document.getElementById("boot-screen");
+  setTimeout(() => {
+    if (bootScreen) {
+      bootScreen.style.display = "none";
+    }
+  }, 3000);
+
   setupEventListeners();
-  setupCategoryFilters();
-
-  // If Supabase is not configured, initialize in guest mode
-  if (!supabase) {
-    updateUIForGuest();
-    disableAuthUI();
-    switchTab("blog"); // Automatically switch to blog tab
-  } else {
-    checkUserSession();
-  }
-
-  loadPosts(); // Load posts by default when page loads
   updateStatusTime();
   setInterval(updateStatusTime, 1000);
+
+  if (!supabaseClient) {
+    disableAuthUI();
+    updateUIForLoggedOut();
+    renderCategoryTree();
+    populateCategorySelect();
+    populateMobileCategorySelect();
+    await loadPosts();
+    return;
+  }
+
+  await checkUserSession();
+  await refreshCategoryUI();
+  await loadPosts();
 });
 
 // Set up all event listeners
 function setupEventListeners() {
-  // Tab navigation
   loginTab.addEventListener("click", () => switchTab("login"));
   blogTab.addEventListener("click", () => switchTab("blog"));
 
-  // Authentication
   loginForm.addEventListener("submit", handleLogin);
   document
     .getElementById("register-btn")
@@ -83,127 +123,200 @@ function setupEventListeners() {
     .getElementById("switch-to-blog")
     .addEventListener("click", () => switchTab("blog"));
 
-  // Blog functionality
   postForm.addEventListener("submit", handleCreatePost);
   postForm.addEventListener("reset", clearImageUploads);
 
-  // Image upload functionality
   const imageUploadInput = document.getElementById("image-upload");
   if (imageUploadInput) {
     imageUploadInput.addEventListener("change", handleImageUpload);
-  } else {
-    console.error("Image upload input not found!");
   }
 
-  // Modal window event listeners
+  categoryTree.addEventListener("click", (event) => {
+    const target = event.target.closest("[data-category-id]");
+    if (!target || !categoryTree.contains(target)) return;
+    selectCategory(target.dataset.categoryId || "all");
+  });
+
+  categoryTree.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const target = event.target.closest("[data-category-id]");
+    if (!target || !categoryTree.contains(target)) return;
+    event.preventDefault();
+    selectCategory(target.dataset.categoryId || "all");
+  });
+
+  mobileCategorySelect.addEventListener("change", () => {
+    selectCategory(mobileCategorySelect.value || "all");
+  });
+
+  manageCategoriesBtn.addEventListener("click", () =>
+    showProgressBar("Opening category manager...", () => showCategoryManager())
+  );
+  quickAddCategoryBtn.addEventListener("click", () =>
+    showProgressBar("Opening category manager...", () =>
+      showCategoryManager({ mode: "create", parentId: currentCategoryId })
+    )
+  );
+
+  document
+    .getElementById("category-manager-close")
+    .addEventListener("click", hideCategoryManager);
+  document
+    .getElementById("category-new-btn")
+    .addEventListener("click", () =>
+      setNewCategoryForm(selectedManagerCategoryId || currentCategoryId)
+    );
+  document
+    .getElementById("category-refresh-btn")
+    .addEventListener("click", () =>
+      showProgressBar("Refreshing categories...", () =>
+        refreshCategoryUI({ showErrors: true })
+      )
+    );
+  categoryHideBtn.addEventListener("click", () => {
+    if (selectedManagerCategoryId) {
+      handleHideCategory(selectedManagerCategoryId);
+    }
+  });
+  categoryDeleteBtn.addEventListener("click", () => {
+    if (selectedManagerCategoryId) {
+      handleDeleteCategory(selectedManagerCategoryId);
+    }
+  });
+  document
+    .getElementById("category-edit-cancel")
+    .addEventListener("click", resetCategoryForm);
+  categoryEditForm.addEventListener("submit", handleCategoryFormSubmit);
+
+  categoryManagerTree.addEventListener("click", (event) => {
+    const target = event.target.closest("[data-manager-category-id]");
+    if (!target || !categoryManagerTree.contains(target)) return;
+    selectManagerCategory(Number(target.dataset.managerCategoryId));
+  });
+
+  categoryManagerTree.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const target = event.target.closest("[data-manager-category-id]");
+    if (!target || !categoryManagerTree.contains(target)) return;
+    event.preventDefault();
+    selectManagerCategory(Number(target.dataset.managerCategoryId));
+  });
+
+  categoryNameInput.addEventListener("input", () => {
+    const shouldAutoSlug =
+      !categorySlugInput.value.trim() ||
+      categorySlugInput.dataset.autoSlug === "true";
+
+    if (shouldAutoSlug) {
+      categorySlugInput.value = slugifyCategoryName(categoryNameInput.value);
+      categorySlugInput.dataset.autoSlug = "true";
+    }
+  });
+
+  categorySlugInput.addEventListener("input", () => {
+    categorySlugInput.dataset.autoSlug = "false";
+  });
+
   document
     .getElementById("post-detail-close")
     .addEventListener("click", hidePostDetail);
   document.getElementById("popup-close").addEventListener("click", hidePopup);
   document.getElementById("popup-ok").addEventListener("click", hidePopup);
+  document
+    .getElementById("confirm-close")
+    .addEventListener("click", () => closeConfirm(false));
+  document
+    .getElementById("confirm-ok")
+    .addEventListener("click", () => closeConfirm(true));
+  document
+    .getElementById("confirm-cancel")
+    .addEventListener("click", () => closeConfirm(false));
 
-  // Close modals when clicking overlay
-  document.addEventListener("click", (e) => {
-    if (e.target.classList.contains("modal-overlay")) {
-      hidePostDetail();
+  document.addEventListener("click", (event) => {
+    if (!event.target.classList.contains("modal-overlay")) return;
+
+    if (isWindowOpen("xp-confirm-window")) {
+      closeConfirm(false);
+      return;
+    }
+
+    hidePostDetail();
+    hidePopup();
+    hideCategoryManager();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+
+    if (isWindowOpen("xp-confirm-window")) {
+      closeConfirm(false);
+    } else if (isWindowOpen("xp-popup-window")) {
       hidePopup();
+    } else if (isWindowOpen("post-detail-window")) {
+      hidePostDetail();
+    } else if (isWindowOpen("category-manager-window")) {
+      hideCategoryManager();
     }
   });
 }
 
-// Helper function to get all subcategories from a summary or category item
-function getSubcategories(element) {
-  const categories = [];
+function disableAuthUI() {
+  document.getElementById("login-btn").disabled = true;
+  document.getElementById("register-btn").disabled = true;
+  document.getElementById("guest-btn").disabled = false;
+}
 
-  // If it's a category-item, add its category
-  if (element.classList.contains("category-item")) {
-    const categoryName = element.getAttribute("data-category");
-    if (categoryName && categoryName !== "all") {
-      categories.push(categoryName);
-    }
+function applySiteConfig() {
+  document.title = SITE_TITLE;
+
+  document.querySelectorAll("[data-site-title]").forEach((element) => {
+    element.textContent = SITE_TITLE;
+  });
+
+  document.querySelectorAll("[data-browser-title]").forEach((element) => {
+    element.textContent = `${SITE_TITLE} - Internet Explorer`;
+  });
+
+  document.querySelectorAll("[data-welcome-title]").forEach((element) => {
+    element.textContent = `Welcome to ${SITE_TITLE}`;
+  });
+
+  if (!sourceLink) return;
+
+  if (!SOURCE_URL) {
+    sourceLink.hidden = true;
+    return;
   }
 
-  // Find the parent <li> or <details> element to search within
-  const parentElement = element.closest("li") || element.closest("details");
-  if (!parentElement) return categories;
-
-  // Find all descendant category items
-  const descendants = parentElement.querySelectorAll(".category-item");
-  descendants.forEach((descendant) => {
-    const descCategory = descendant.getAttribute("data-category");
-    if (
-      descCategory &&
-      descCategory !== "all" &&
-      !categories.includes(descCategory)
-    ) {
-      categories.push(descCategory);
-    }
-  });
-
-  return categories;
+  sourceLink.hidden = false;
+  sourceLink.href = SOURCE_URL;
+  sourceLink.textContent = SOURCE_LABEL;
 }
 
-// Set up category filter click handlers
-function setupCategoryFilters() {
-  const categoryItems = document.querySelectorAll(".category-item");
-  const summaryElements = document.querySelectorAll(".tree-view summary");
+function getConfigText(value, fallback) {
+  const text = String(value || "").trim();
+  return text || fallback;
+}
 
-  // Handle category item clicks
-  categoryItems.forEach((item) => {
-    item.addEventListener("click", (e) => {
-      e.stopPropagation(); // Prevent bubbling to parent summary
-      const category = item.getAttribute("data-category");
+function getConfigUrl(value, fallback = "") {
+  const candidate = String(value || fallback || "").trim();
+  if (!candidate) return "";
 
-      // Remove selected class from all items and summaries
-      categoryItems.forEach((el) => el.classList.remove("selected"));
-      summaryElements.forEach((el) => el.classList.remove("selected"));
+  try {
+    const parsed = new URL(candidate, window.location.href);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.href;
+    }
+  } catch (error) {
+    console.warn("Invalid URL in config:", error);
+  }
 
-      // Add selected class to clicked item
-      item.classList.add("selected");
-
-      // Update filter state and reload posts
-      if (category === "all") {
-        currentCategoryFilter = null;
-        statusUser.textContent = isGuest
-          ? "Browsing as guest"
-          : currentUser
-          ? `Logged in as: ${currentUser.email}`
-          : "Not logged in";
-        loadPosts();
-      } else {
-        // Get all subcategories including the clicked category
-        const categories = getSubcategories(item);
-        currentCategoryFilter = categories.length > 1 ? categories : category;
-        loadPosts(currentCategoryFilter);
-      }
-    });
-  });
-
-  // Handle summary element clicks (parent categories)
-  summaryElements.forEach((summary) => {
-    summary.addEventListener("click", () => {
-      // Get all child category items
-      const categories = getSubcategories(summary);
-
-      if (categories.length > 0) {
-        // Remove selected class from all items and summaries
-        categoryItems.forEach((el) => el.classList.remove("selected"));
-        summaryElements.forEach((el) => el.classList.remove("selected"));
-
-        // Add selected class to clicked summary
-        summary.classList.add("selected");
-
-        // Filter by all child categories
-        currentCategoryFilter = categories;
-        loadPosts(categories);
-      }
-    });
-  });
+  return fallback && candidate !== fallback ? getConfigUrl(fallback) : "";
 }
 
 // Tab switching functionality
 function switchTab(tab) {
-  showProgressBar("Loading...", () => {
+  showProgressBar("Loading...", async () => {
     if (tab === "login") {
       loginTab.setAttribute("aria-selected", "true");
       blogTab.setAttribute("aria-selected", "false");
@@ -214,37 +327,57 @@ function switchTab(tab) {
       blogTab.setAttribute("aria-selected", "true");
       loginPanel.setAttribute("hidden", "");
       blogPanel.removeAttribute("hidden");
-      loadPosts(currentCategoryFilter);
+      await loadPosts(currentCategoryIds);
     }
   });
 }
 
 // Check for existing user session
 async function checkUserSession() {
-  if (!supabase) {
-    console.log("Supabase not available - skipping session check");
-    return;
-  }
-
   try {
     const {
       data: { session },
-    } = await supabase.auth.getSession();
+    } = await supabaseClient.auth.getSession();
+
     if (session) {
       currentUser = session.user;
+      isGuest = false;
+      await checkOwnerStatus();
       updateUIForLoggedInUser();
+    } else {
+      updateUIForLoggedOut();
     }
   } catch (error) {
     console.error("Error checking session:", error);
+    updateUIForLoggedOut();
   }
 }
 
-// Handle user login
-async function handleLogin(e) {
-  e.preventDefault();
+async function checkOwnerStatus() {
+  if (!supabaseClient || !currentUser) {
+    isOwner = false;
+    return;
+  }
 
-  if (!supabase) {
-    showAlert("Authentication is not available. Supabase is not configured.");
+  const { data, error } = await supabaseClient.rpc("is_site_owner");
+
+  if (error) {
+    console.error("Failed to check owner status:", error);
+    isOwner = false;
+    return;
+  }
+
+  isOwner = !!data;
+}
+
+// Handle user login
+async function handleLogin(event) {
+  event.preventDefault();
+
+  if (!supabaseClient) {
+    showAlert(
+      "Supabase is not configured. Create config.js from config.example.js."
+    );
     return;
   }
 
@@ -253,15 +386,19 @@ async function handleLogin(e) {
 
   showProgressBar("Signing in...", async () => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email,
-        password: password,
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password,
       });
 
       if (error) throw error;
 
       currentUser = data.user;
+      isGuest = false;
+      await checkOwnerStatus();
       updateUIForLoggedInUser();
+      await refreshCategoryUI();
+      await loadPosts(currentCategoryIds);
       showAlert("Login successful!");
     } catch (error) {
       showAlert("Login failed: " + error.message);
@@ -271,8 +408,10 @@ async function handleLogin(e) {
 
 // Handle user registration
 async function handleRegister() {
-  if (!supabase) {
-    showAlert("Authentication is not available. Supabase is not configured.");
+  if (!supabaseClient) {
+    showAlert(
+      "Supabase is not configured. Create config.js from config.example.js."
+    );
     return;
   }
 
@@ -286,9 +425,9 @@ async function handleRegister() {
 
   showProgressBar("Creating account...", async () => {
     try {
-      const { error } = await supabase.auth.signUp({
-        email: email,
-        password: password,
+      const { error } = await supabaseClient.auth.signUp({
+        email,
+        password,
       });
 
       if (error) throw error;
@@ -304,15 +443,17 @@ async function handleRegister() {
 
 // Handle guest mode
 function handleGuestMode() {
-  showProgressBar("Entering guest mode...", () => {
+  showProgressBar("Entering guest mode...", async () => {
+    currentUser = null;
     isGuest = true;
+    isOwner = false;
     updateUIForGuest();
-    // Directly switch to blog tab without progress bar
+    await refreshCategoryUI();
     loginTab.setAttribute("aria-selected", "false");
     blogTab.setAttribute("aria-selected", "true");
     loginPanel.setAttribute("hidden", "");
     blogPanel.removeAttribute("hidden");
-    loadPosts(currentCategoryFilter);
+    await loadPosts(currentCategoryIds);
     showAlert(
       "Browsing as guest - you can view posts but cannot create new ones"
     );
@@ -321,15 +462,21 @@ function handleGuestMode() {
 
 // Handle user logout
 async function handleLogout() {
+  if (!supabaseClient) {
+    showAlert(
+      "Supabase is not configured. Create config.js from config.example.js."
+    );
+    return;
+  }
+
   showProgressBar("Signing out...", async () => {
     try {
-      if (supabase) {
-        await supabase.auth.signOut();
-      }
+      await supabaseClient.auth.signOut();
       currentUser = null;
       isGuest = false;
+      isOwner = false;
       updateUIForLoggedOut();
-      // Directly switch to login tab without progress bar
+      await refreshCategoryUI();
       loginTab.setAttribute("aria-selected", "true");
       blogTab.setAttribute("aria-selected", "false");
       loginPanel.removeAttribute("hidden");
@@ -345,9 +492,12 @@ async function handleLogout() {
 function updateUIForLoggedInUser() {
   loginSection.style.display = "none";
   userSection.style.display = "block";
-  postFormSection.style.display = "block";
+  postFormSection.style.display = isOwner ? "block" : "none";
   document.getElementById("user-email").textContent = currentUser.email;
-  statusUser.textContent = `Logged in as: ${currentUser.email}`;
+  statusUser.textContent = isOwner
+    ? `Owner: ${currentUser.email}`
+    : `Logged in as: ${currentUser.email} (read only)`;
+  updateOwnerControls();
 }
 
 // Update UI for guest mode
@@ -356,6 +506,7 @@ function updateUIForGuest() {
   userSection.style.display = "none";
   postFormSection.style.display = "none";
   statusUser.textContent = "Browsing as guest";
+  updateOwnerControls();
 }
 
 // Update UI for logged out state
@@ -365,60 +516,868 @@ function updateUIForLoggedOut() {
   postFormSection.style.display = "none";
   statusUser.textContent = "Not logged in";
 
-  // Clear form fields
   document.getElementById("email").value = "";
   document.getElementById("password").value = "";
-
-  // Clear image uploads
   clearImageUploads();
+  updateOwnerControls();
 }
 
-// Disable authentication UI when Supabase is not configured
-function disableAuthUI() {
-  const loginBtn = loginForm.querySelector('button[type="submit"]');
-  const registerBtn = document.getElementById("register-btn");
-  const guestBtn = document.getElementById("guest-btn");
+function updateOwnerControls() {
+  manageCategoriesBtn.hidden = !isOwner;
+  quickAddCategoryBtn.hidden = !isOwner;
+  postFormSection.style.display = currentUser && isOwner ? "block" : "none";
+}
 
-  if (loginBtn) {
-    loginBtn.disabled = true;
-    loginBtn.title = "Authentication unavailable - Supabase not configured";
+async function refreshCategoryUI(options = {}) {
+  await loadCategories(options);
+
+  if (
+    currentCategoryId &&
+    !categories.some((category) => category.id === currentCategoryId)
+  ) {
+    currentCategoryId = null;
+    currentCategoryIds = null;
+    currentCategoryLabel = "All Posts";
+  } else if (currentCategoryId) {
+    currentCategoryIds = getCategoryAndDescendantIds(currentCategoryId);
+    currentCategoryLabel = getCategoryPath(currentCategoryId);
   }
-  if (registerBtn) {
-    registerBtn.disabled = true;
-    registerBtn.title = "Authentication unavailable - Supabase not configured";
-  }
-  if (guestBtn) {
-    guestBtn.disabled = true;
-    guestBtn.title = "Already in guest mode";
+
+  renderCategoryTree();
+  populateCategorySelect();
+  populateMobileCategorySelect();
+  updateOwnerControls();
+
+  if (isWindowOpen("category-manager-window")) {
+    if (
+      categoryFormMode === "edit" &&
+      selectedManagerCategoryId &&
+      categories.some((category) => category.id === selectedManagerCategoryId)
+    ) {
+      selectManagerCategory(selectedManagerCategoryId);
+    } else {
+      renderCategoryManagerTree();
+      populateParentCategorySelect();
+    }
   }
 }
 
-// Handle creating new posts
-async function handleCreatePost(e) {
-  e.preventDefault();
+async function loadCategories(options = {}) {
+  const showErrors = options.showErrors || false;
 
-  if (!supabase) {
-    showAlert("Cannot create posts. Supabase is not configured.");
+  if (!supabaseClient) {
+    categories = [];
+    categoryPostCounts = new Map();
+    categoryLoadFailed = true;
     return;
   }
 
+  try {
+    const { data, error } = await supabaseClient
+      .from("categories")
+      .select(
+        "id, name, slug, parent_id, description, sort_order, is_visible, created_by, created_at, updated_at"
+      )
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (error) throw error;
+
+    categories = (data || []).map(normalizeCategory);
+    categoryPostCounts = await loadCategoryPostCounts();
+    categoryLoadFailed = false;
+  } catch (error) {
+    categories = [];
+    categoryPostCounts = new Map();
+    categoryLoadFailed = true;
+    console.error("Failed to load categories:", error);
+
+    if (showErrors) {
+      showAlert("Failed to load categories. Please check Supabase configuration.");
+    }
+  }
+}
+
+async function loadCategoryPostCounts() {
+  const counts = new Map();
+
+  try {
+    const { data, error } = await supabaseClient
+      .from("posts")
+      .select("category_id");
+
+    if (error) throw error;
+
+    (data || []).forEach((post) => {
+      if (!post.category_id) return;
+      const id = Number(post.category_id);
+      counts.set(id, (counts.get(id) || 0) + 1);
+    });
+  } catch (error) {
+    console.error("Failed to load category post counts:", error);
+  }
+
+  return counts;
+}
+
+function normalizeCategory(category) {
+  return {
+    ...category,
+    id: Number(category.id),
+    parent_id:
+      category.parent_id === null || category.parent_id === undefined
+        ? null
+        : Number(category.parent_id),
+    sort_order: Number(category.sort_order || 0),
+    is_visible: category.is_visible !== false,
+  };
+}
+
+function getVisibleCategories() {
+  return categories.filter((category) => category.is_visible || isOwner);
+}
+
+function sortCategories(categoryList) {
+  return [...categoryList].sort((a, b) => {
+    if (a.sort_order !== b.sort_order) {
+      return a.sort_order - b.sort_order;
+    }
+
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function getChildCategories(parentId, allCategories = categories) {
+  return sortCategories(
+    allCategories.filter((category) => category.parent_id === parentId)
+  );
+}
+
+function renderCategoryTree() {
+  if (!categoryTree) return;
+
+  const visibleCategories = getVisibleCategories();
+  const rootCategories = getChildCategories(null, visibleCategories);
+  const allSelected = currentCategoryId === null ? " selected" : "";
+  const allAriaSelected = currentCategoryId === null ? "true" : "false";
+  let treeHtml = `
+    <li
+      class="category-item${allSelected}"
+      data-category-id="all"
+      role="treeitem"
+      tabindex="0"
+      aria-selected="${allAriaSelected}"
+    >All Posts</li>
+  `;
+
+  if (categoryLoadFailed && !supabaseClient) {
+    treeHtml += `<li class="tree-empty">Supabase is not configured.</li>`;
+  } else if (categoryLoadFailed) {
+    treeHtml += `<li class="tree-empty">Failed to load categories.</li>`;
+  } else if (rootCategories.length === 0) {
+    treeHtml += `<li class="tree-empty">No categories yet.</li>`;
+  } else {
+    treeHtml += rootCategories
+      .map((category) => renderCategoryNode(category, visibleCategories))
+      .join("");
+  }
+
+  categoryTree.innerHTML = treeHtml;
+}
+
+function renderCategoryNode(category, allCategories) {
+  const children = getChildCategories(category.id, allCategories);
+  const selected = currentCategoryId === category.id ? " selected" : "";
+  const hidden = category.is_visible ? "" : " category-hidden";
+  const hiddenLabel = category.is_visible ? "" : " (hidden)";
+  const countText =
+    categoryPostCounts.size > 0 ? ` (${getCategoryPostCount(category.id)})` : "";
+  const label = `${escapeHtml(category.name)}${hiddenLabel}${countText}`;
+  const ariaSelected = currentCategoryId === category.id ? "true" : "false";
+
+  if (children.length > 0) {
+    return `
+      <li>
+        <details open>
+          <summary
+            class="${selected.trim()}${hidden}"
+            data-category-id="${category.id}"
+            role="treeitem"
+            tabindex="0"
+            aria-selected="${ariaSelected}"
+          >${label}</summary>
+          <ul>
+            ${children
+              .map((child) => renderCategoryNode(child, allCategories))
+              .join("")}
+          </ul>
+        </details>
+      </li>
+    `;
+  }
+
+  return `
+    <li
+      class="category-item${selected}${hidden}"
+      data-category-id="${category.id}"
+      role="treeitem"
+      tabindex="0"
+      aria-selected="${ariaSelected}"
+    >${label}</li>
+  `;
+}
+
+function populateCategorySelect() {
+  if (!postCategorySelect) return;
+
+  const previousValue = postCategorySelect.value;
+  const visibleCategories = getVisibleCategories();
+  const rootCategories = getChildCategories(null, visibleCategories);
+
+  postCategorySelect.innerHTML = `<option value="">Select category...</option>`;
+  rootCategories.forEach((category) =>
+    appendCategoryOption(postCategorySelect, category, visibleCategories, 0)
+  );
+
+  postCategorySelect.disabled = visibleCategories.length === 0;
+
+  if (
+    previousValue &&
+    visibleCategories.some((category) => String(category.id) === previousValue)
+  ) {
+    postCategorySelect.value = previousValue;
+  }
+
+  if (visibleCategories.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Create a category first";
+    postCategorySelect.appendChild(option);
+  }
+}
+
+function populateMobileCategorySelect() {
+  if (!mobileCategorySelect) return;
+
+  const selectedValue = currentCategoryId ? String(currentCategoryId) : "";
+  const visibleCategories = getVisibleCategories();
+  const rootCategories = getChildCategories(null, visibleCategories);
+
+  mobileCategorySelect.innerHTML = `<option value="">All Posts</option>`;
+  rootCategories.forEach((category) =>
+    appendCategoryOption(mobileCategorySelect, category, visibleCategories, 0)
+  );
+  mobileCategorySelect.value = selectedValue;
+}
+
+function appendCategoryOption(select, category, allCategories, depth, excludeIds) {
+  if (excludeIds && excludeIds.has(category.id)) return;
+
+  const option = document.createElement("option");
+  option.value = category.id;
+  option.textContent = `${"-- ".repeat(depth)}${category.name}${
+    category.is_visible ? "" : " (hidden)"
+  }`;
+  select.appendChild(option);
+
+  getChildCategories(category.id, allCategories).forEach((child) =>
+    appendCategoryOption(select, child, allCategories, depth + 1, excludeIds)
+  );
+}
+
+async function selectCategory(rawId) {
+  if (!rawId || rawId === "all") {
+    currentCategoryId = null;
+    currentCategoryIds = null;
+    currentCategoryLabel = "All Posts";
+    setCategorySelection("all");
+    mobileCategorySelect.value = "";
+    await loadPosts(null, { minLoadingMs: CATEGORY_POST_LOADING_MS });
+    return;
+  }
+
+  const categoryId = Number(rawId);
+  const category = categories.find((item) => item.id === categoryId);
+  if (!category) return;
+
+  currentCategoryId = categoryId;
+  currentCategoryIds = getCategoryAndDescendantIds(categoryId);
+  currentCategoryLabel = getCategoryPath(categoryId);
+  setCategorySelection(String(categoryId));
+  mobileCategorySelect.value = String(categoryId);
+  await loadPosts(currentCategoryIds, {
+    minLoadingMs: CATEGORY_POST_LOADING_MS,
+  });
+}
+
+function setCategorySelection(rawId) {
+  categoryTree
+    .querySelectorAll("[data-category-id]")
+    .forEach((element) => {
+      element.classList.remove("selected");
+      element.setAttribute("aria-selected", "false");
+    });
+
+  const selected = categoryTree.querySelector(`[data-category-id="${rawId}"]`);
+  if (selected) {
+    selected.classList.add("selected");
+    selected.setAttribute("aria-selected", "true");
+  }
+}
+
+function getCategoryAndDescendantIds(categoryId) {
+  const result = [categoryId];
+
+  function collectChildren(parentId) {
+    getChildCategories(parentId).forEach((child) => {
+      result.push(child.id);
+      collectChildren(child.id);
+    });
+  }
+
+  collectChildren(categoryId);
+  return result;
+}
+
+function getCategoryPostCount(categoryId) {
+  return getCategoryAndDescendantIds(categoryId).reduce(
+    (total, id) => total + (categoryPostCounts.get(id) || 0),
+    0
+  );
+}
+
+function getCategoryPath(categoryId) {
+  const path = [];
+  let category = categories.find((item) => item.id === categoryId);
+
+  while (category) {
+    path.unshift(category.name);
+    category = categories.find((item) => item.id === category.parent_id);
+  }
+
+  return path.length > 0 ? path.join(" / ") : "All Posts";
+}
+
+function showCategoryManager(options = {}) {
+  if (!isOwner) {
+    showAlert("Only the site owner can manage categories.");
+    return;
+  }
+
+  const overlay = getOrCreateOverlay();
+  overlay.style.display = "block";
+  categoryManagerWindow.style.display = "block";
+  renderCategoryManagerTree();
+
+  if (options.mode === "create" || categories.length === 0) {
+    setNewCategoryForm(options.parentId || null);
+  } else if (selectedManagerCategoryId) {
+    selectManagerCategory(selectedManagerCategoryId);
+  } else if (currentCategoryId) {
+    selectManagerCategory(currentCategoryId);
+  } else {
+    selectManagerCategory(categories[0].id);
+  }
+}
+
+function hideCategoryManager() {
+  if (!categoryManagerWindow) return;
+  categoryManagerWindow.style.display = "none";
+  hideOverlayIfNoModals();
+}
+
+function renderCategoryManagerTree() {
+  if (!categoryManagerTree) return;
+
+  const rootCategories = getChildCategories(null);
+
+  if (categoryLoadFailed && !supabaseClient) {
+    categoryManagerTree.innerHTML =
+      '<li class="tree-empty">Supabase is not configured.</li>';
+    return;
+  }
+
+  if (categoryLoadFailed) {
+    categoryManagerTree.innerHTML =
+      '<li class="tree-empty">Failed to load categories.</li>';
+    return;
+  }
+
+  if (rootCategories.length === 0) {
+    categoryManagerTree.innerHTML =
+      '<li class="tree-empty">No categories yet. Create your first folder.</li>';
+    return;
+  }
+
+  categoryManagerTree.innerHTML = rootCategories
+    .map((category) => renderCategoryManagerNode(category))
+    .join("");
+}
+
+function renderCategoryManagerNode(category) {
+  const children = getChildCategories(category.id);
+  const selected = selectedManagerCategoryId === category.id ? " selected" : "";
+  const hidden = category.is_visible ? "" : " category-hidden";
+  const hiddenLabel = category.is_visible ? "" : " (hidden)";
+  const label = `${escapeHtml(category.name)}${hiddenLabel}`;
+  const ariaSelected = selectedManagerCategoryId === category.id ? "true" : "false";
+
+  if (children.length > 0) {
+    return `
+      <li>
+        <details open>
+          <summary
+            class="${selected.trim()}${hidden}"
+            data-manager-category-id="${category.id}"
+            role="treeitem"
+            tabindex="0"
+            aria-selected="${ariaSelected}"
+          >${label}</summary>
+          <ul>
+            ${children.map((child) => renderCategoryManagerNode(child)).join("")}
+          </ul>
+        </details>
+      </li>
+    `;
+  }
+
+  return `
+    <li
+      class="category-item${selected}${hidden}"
+      data-manager-category-id="${category.id}"
+      role="treeitem"
+      tabindex="0"
+      aria-selected="${ariaSelected}"
+    >${label}</li>
+  `;
+}
+
+function setNewCategoryForm(parentId = null) {
+  categoryFormMode = "create";
+  selectedManagerCategoryId = null;
+  categoryEditForm.reset();
+  populateParentCategorySelect();
+
+  if (parentId && categories.some((category) => category.id === parentId)) {
+    categoryParentSelect.value = String(parentId);
+  }
+
+  categoryVisibleInput.checked = true;
+  categorySortOrderInput.value = "0";
+  categorySlugInput.dataset.autoSlug = "true";
+  categorySaveBtn.textContent = "Create";
+  updateCategoryToolbarState();
+  renderCategoryManagerTree();
+  categoryNameInput.focus();
+}
+
+function selectManagerCategory(categoryId) {
+  const category = categories.find((item) => item.id === categoryId);
+  if (!category) return;
+
+  categoryFormMode = "edit";
+  selectedManagerCategoryId = categoryId;
+  populateParentCategorySelect(categoryId);
+  categoryNameInput.value = category.name || "";
+  categorySlugInput.value = category.slug || "";
+  categoryDescriptionInput.value = category.description || "";
+  categoryParentSelect.value = category.parent_id ? String(category.parent_id) : "";
+  categoryVisibleInput.checked = category.is_visible;
+  categorySortOrderInput.value = String(category.sort_order || 0);
+  categorySlugInput.dataset.autoSlug = "false";
+  categorySaveBtn.textContent = "Save";
+  updateCategoryToolbarState();
+  renderCategoryManagerTree();
+}
+
+function resetCategoryForm() {
+  if (categoryFormMode === "edit" && selectedManagerCategoryId) {
+    selectManagerCategory(selectedManagerCategoryId);
+    return;
+  }
+
+  setNewCategoryForm();
+}
+
+function updateCategoryToolbarState() {
+  const hasSelection = categoryFormMode === "edit" && !!selectedManagerCategoryId;
+  categoryHideBtn.disabled = !hasSelection;
+  categoryDeleteBtn.disabled = !hasSelection;
+}
+
+function populateParentCategorySelect(excludeCategoryId = null) {
+  if (!categoryParentSelect) return;
+
+  const excludeIds = new Set();
+  if (excludeCategoryId) {
+    getCategoryAndDescendantIds(excludeCategoryId).forEach((id) =>
+      excludeIds.add(id)
+    );
+  }
+
+  categoryParentSelect.innerHTML = `<option value="">All Categories</option>`;
+  getChildCategories(null).forEach((category) =>
+    appendCategoryOption(categoryParentSelect, category, categories, 0, excludeIds)
+  );
+}
+
+async function handleCategoryFormSubmit(event) {
+  event.preventDefault();
+
+  const categoryId =
+    categoryFormMode === "edit" ? selectedManagerCategoryId : null;
+  const payload = collectCategoryPayload();
+  const validation = validateCategoryInput(payload, categoryId);
+
+  if (!validation.ok) {
+    showAlert(validation.message);
+    return;
+  }
+
+  if (categoryFormMode === "edit" && categoryId) {
+    await handleUpdateCategory(categoryId, validation.payload);
+  } else {
+    await handleCreateCategory(validation.payload);
+  }
+}
+
+function collectCategoryPayload() {
+  const name = categoryNameInput.value.trim();
+  const slug = (categorySlugInput.value.trim() || slugifyCategoryName(name)).trim();
+  const parentValue = categoryParentSelect.value;
+
+  return {
+    name,
+    slug,
+    parent_id: parentValue ? Number(parentValue) : null,
+    description: categoryDescriptionInput.value.trim() || null,
+    sort_order: Number(categorySortOrderInput.value || 0),
+    is_visible: categoryVisibleInput.checked,
+  };
+}
+
+function validateCategoryInput(payload, categoryId = null) {
+  const normalizedPayload = {
+    ...payload,
+    name: payload.name.trim(),
+    slug: slugifyCategoryName(payload.slug || payload.name),
+    sort_order: Number.isFinite(payload.sort_order) ? payload.sort_order : 0,
+  };
+
+  if (!normalizedPayload.name) {
+    return { ok: false, message: "Name is required." };
+  }
+
+  if (normalizedPayload.name.length > 50) {
+    return { ok: false, message: "Category name must be 50 characters or less." };
+  }
+
+  if (!normalizedPayload.slug) {
+    return { ok: false, message: "Slug is required." };
+  }
+
+  if (
+    categories.some(
+      (category) =>
+        category.id !== categoryId &&
+        category.slug.toLowerCase() === normalizedPayload.slug.toLowerCase()
+    )
+  ) {
+    return { ok: false, message: "This slug is already used." };
+  }
+
+  if (
+    categories.some(
+      (category) =>
+        category.id !== categoryId &&
+        category.parent_id === normalizedPayload.parent_id &&
+        category.name.trim().toLowerCase() ===
+          normalizedPayload.name.toLowerCase()
+    )
+  ) {
+    return {
+      ok: false,
+      message: "A category with this name already exists under the selected parent.",
+    };
+  }
+
+  if (categoryId && normalizedPayload.parent_id) {
+    const descendantIds = getCategoryAndDescendantIds(categoryId);
+    if (descendantIds.includes(normalizedPayload.parent_id)) {
+      return {
+        ok: false,
+        message: "A category cannot be moved into itself or its subcategories.",
+      };
+    }
+  }
+
+  return { ok: true, payload: normalizedPayload };
+}
+
+function slugifyCategoryName(name) {
+  return String(name || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+async function handleCreateCategory(payload) {
+  if (!isOwner) {
+    showAlert("Only the site owner can create categories.");
+    return;
+  }
+
+  let newCategoryId = null;
+
+  try {
+    newCategoryId = await showProgressBar("Creating category...", async () => {
+      const { data, error } = await supabaseClient
+        .from("categories")
+        .insert([
+          {
+            name: payload.name,
+            slug: payload.slug,
+            parent_id: payload.parent_id,
+            description: payload.description,
+            sort_order: payload.sort_order,
+            is_visible: payload.is_visible,
+            created_by: currentUser.id,
+          },
+        ])
+        .select("id")
+        .single();
+
+      if (error) throw error;
+
+      await refreshCategoryUI();
+      return data ? Number(data.id) : null;
+    });
+  } catch (error) {
+    showAlert("Failed to create category: " + error.message);
+    return;
+  }
+
+  if (newCategoryId) {
+    selectedManagerCategoryId = newCategoryId;
+    if (postCategorySelect) {
+      postCategorySelect.value = String(newCategoryId);
+    }
+    selectManagerCategory(newCategoryId);
+  }
+
+  showAlert("Category created successfully.");
+}
+
+async function handleUpdateCategory(categoryId, payload) {
+  if (!isOwner) {
+    showAlert("Only the site owner can update categories.");
+    return;
+  }
+
+  const existing = categories.find((category) => category.id === categoryId);
+  if (!existing) return;
+
+  if (
+    existing.slug !== payload.slug &&
+    !(await showConfirm("Changing the slug may affect existing links. Continue?"))
+  ) {
+    return;
+  }
+
+  if (
+    existing.parent_id !== payload.parent_id &&
+    !(await showConfirm("Move this category to a different parent?"))
+  ) {
+    return;
+  }
+
+  if (
+    existing.is_visible &&
+    !payload.is_visible &&
+    !(await showConfirm("Hide this category from the public sidebar?"))
+  ) {
+    return;
+  }
+
+  try {
+    await showProgressBar("Saving category...", async () => {
+      const { error } = await supabaseClient
+        .from("categories")
+        .update({
+          name: payload.name,
+          slug: payload.slug,
+          parent_id: payload.parent_id,
+          description: payload.description,
+          sort_order: payload.sort_order,
+          is_visible: payload.is_visible,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", categoryId);
+
+      if (error) throw error;
+
+      await refreshCategoryUI();
+      if (currentCategoryId) {
+        currentCategoryIds = getCategoryAndDescendantIds(currentCategoryId);
+        currentCategoryLabel = getCategoryPath(currentCategoryId);
+      }
+      selectManagerCategory(categoryId);
+    });
+  } catch (error) {
+    showAlert("Failed to update category: " + error.message);
+    return;
+  }
+
+  showAlert("Category updated successfully.");
+}
+
+async function handleHideCategory(categoryId) {
+  if (!isOwner) {
+    showAlert("Only the site owner can update categories.");
+    return;
+  }
+
+  if (!(await showConfirm("Hide this category from the public sidebar?"))) {
+    return;
+  }
+
+  try {
+    await showProgressBar("Hiding category...", async () => {
+      const { error } = await supabaseClient
+        .from("categories")
+        .update({
+          is_visible: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", categoryId);
+
+      if (error) throw error;
+
+      await refreshCategoryUI();
+      selectManagerCategory(categoryId);
+    });
+  } catch (error) {
+    showAlert("Failed to hide category: " + error.message);
+    return;
+  }
+
+  showAlert("Category hidden successfully.");
+}
+
+async function canDeleteCategory(categoryId) {
+  const children = categories.filter((category) => category.parent_id === categoryId);
+
+  if (children.length > 0) {
+    return {
+      ok: false,
+      reason: "This category contains subcategories. Hide it or move them first.",
+    };
+  }
+
+  const { count, error } = await supabaseClient
+    .from("posts")
+    .select("id", { count: "exact", head: true })
+    .eq("category_id", categoryId);
+
+  if (error) {
+    return {
+      ok: false,
+      reason: error.message,
+    };
+  }
+
+  if (count > 0) {
+    return {
+      ok: false,
+      reason: `This category contains ${count} posts. Hide it or move posts first.`,
+    };
+  }
+
+  return { ok: true };
+}
+
+async function handleDeleteCategory(categoryId) {
+  if (!isOwner) {
+    showAlert("Only the site owner can delete categories.");
+    return;
+  }
+
+  const result = await showProgressBar("Checking category...", () =>
+    canDeleteCategory(categoryId)
+  );
+
+  if (!result.ok) {
+    showAlert(result.reason);
+    return;
+  }
+
+  if (!(await showConfirm("Delete this empty category?"))) {
+    return;
+  }
+
+  try {
+    await showProgressBar("Deleting category...", async () => {
+      const { error } = await supabaseClient
+        .from("categories")
+        .delete()
+        .eq("id", categoryId);
+
+      if (error) throw error;
+
+      if (currentCategoryId === categoryId) {
+        currentCategoryId = null;
+        currentCategoryIds = null;
+        currentCategoryLabel = "All Posts";
+      }
+
+      selectedManagerCategoryId = null;
+      await refreshCategoryUI();
+      setNewCategoryForm();
+      await loadPosts(currentCategoryIds);
+    });
+  } catch (error) {
+    showAlert("Failed to delete category: " + error.message);
+    return;
+  }
+
+  showAlert("Category deleted successfully.");
+}
+
+// Handle creating new posts
+async function handleCreatePost(event) {
+  event.preventDefault();
+
   if (!currentUser) {
-    showAlert("You must be logged in to create posts");
+    showAlert("You must be logged in to create posts.");
+    return;
+  }
+
+  if (!isOwner) {
+    showAlert("Only the site owner can create posts.");
     return;
   }
 
   const title = document.getElementById("post-title").value;
   const content = document.getElementById("post-content").value;
-  const category = document.getElementById("post-category").value;
+  const categoryId = Number(postCategorySelect.value);
+
+  if (!categoryId) {
+    showAlert("Please select a category.");
+    return;
+  }
 
   showProgressBar("Creating post...", async () => {
     try {
-      const { error } = await supabase.from("posts").insert([
+      const { error } = await supabaseClient.from("posts").insert([
         {
-          title: title,
-          content: content,
-          category: category,
+          title,
+          content,
+          category_id: categoryId,
           author_email: currentUser.email,
+          created_by: currentUser.id,
           created_at: new Date().toISOString(),
           images: uploadedImages.length > 0 ? uploadedImages : null,
         },
@@ -429,7 +1388,8 @@ async function handleCreatePost(e) {
       showAlert("Post created successfully!");
       postForm.reset();
       clearImageUploads();
-      loadPosts(currentCategoryFilter);
+      await refreshCategoryUI();
+      await loadPosts(currentCategoryIds);
     } catch (error) {
       showAlert("Failed to create post: " + error.message);
     }
@@ -437,103 +1397,105 @@ async function handleCreatePost(e) {
 }
 
 // Load and display posts
-async function loadPosts(category = null) {
-  // Show loading indicator
-  const loadingSection = document.getElementById("posts-loading");
-  if (loadingSection) {
-    loadingSection.style.display = "block";
-  }
+async function loadPosts(categoryIds = null, options = {}) {
+  const requestId = ++postsLoadRequestId;
+  const minLoadingPromise = waitForMinimumLoading(options.minLoadingMs);
 
-  // If Supabase is not available, show a helpful message
-  if (!supabase) {
-    if (loadingSection) {
-      loadingSection.style.display = "none";
-    }
-    postsSection.innerHTML =
-      "<h3>Blog Posts</h3><p>No posts available. Supabase is not configured.</p><p>Please configure Supabase credentials in app.js to enable full functionality.</p>";
+  if (!supabaseClient) {
+    postsSection.innerHTML = `
+      <h3>Blog Posts</h3>
+      <p>No posts available. Supabase is not configured.</p>
+    `;
     statusPosts.textContent = "0 posts";
     return;
   }
 
+  postsSection.innerHTML = `
+    <h3>Blog Posts</h3>
+    <div id="posts-loading">
+      <p>Loading posts...</p>
+      <progress max="100" value="80"></progress>
+    </div>
+  `;
+
   try {
-    let query = supabase.from("posts").select("*");
-
-    // Apply category filter if provided
-    if (category) {
-      if (Array.isArray(category)) {
-        // Multiple categories (hierarchical filter)
-        query = query.in("category", category);
-      } else {
-        // Single category (exact match)
-        query = query.eq("category", category);
-      }
-    }
-
-    const { data: posts, error } = await query.order("created_at", {
-      ascending: false,
-    });
-
-    if (error) throw error;
-
-    // Hide loading indicator
-    if (loadingSection) {
-      loadingSection.style.display = "none";
-    }
+    const posts = await fetchPosts(categoryIds);
+    await minLoadingPromise;
+    if (requestId !== postsLoadRequestId) return;
 
     displayPosts(posts);
 
-    // Update status bar with filter info
-    if (category) {
-      if (Array.isArray(category)) {
-        // Hierarchical filter - show parent category name
-        const parentCategory = category[0];
-        const subcategoryCount = category.length - 1;
-        if (subcategoryCount > 0) {
-          statusPosts.textContent = `${posts.length} posts in ${parentCategory} and subcategories`;
-        } else {
-          statusPosts.textContent = `${posts.length} posts in ${parentCategory}`;
-        }
-      } else {
-        statusPosts.textContent = `${posts.length} posts in ${category}`;
-      }
-    } else {
-      statusPosts.textContent = `${posts.length} posts`;
-    }
+    const suffix = currentCategoryId ? ` in ${currentCategoryLabel}` : "";
+    statusPosts.textContent = `${posts.length} posts${suffix}`;
   } catch (error) {
-    // Hide loading indicator on error
-    if (loadingSection) {
-      loadingSection.style.display = "none";
-    }
+    await minLoadingPromise;
+    if (requestId !== postsLoadRequestId) return;
 
-    postsSection.innerHTML =
-      "<h3>Blog Posts</h3><p>Error loading posts. Please check your Supabase configuration.</p>";
+    postsSection.innerHTML = `
+      <h3>Blog Posts</h3>
+      <p>Error loading posts. Please check your Supabase configuration.</p>
+    `;
     console.error("Error loading posts:", error);
   }
+}
+
+function waitForMinimumLoading(minLoadingMs = 0) {
+  const delayMs = Number(minLoadingMs) || 0;
+  if (delayMs <= 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+async function fetchPosts(categoryIds = null) {
+  let query = supabaseClient
+    .from("posts")
+    .select("*, categories (id, name, slug)");
+
+  if (Array.isArray(categoryIds) && categoryIds.length > 0) {
+    query = query.in("category_id", categoryIds);
+  }
+
+  const { data, error } = await query.order("created_at", {
+    ascending: false,
+  });
+
+  if (!error) {
+    return data || [];
+  }
+
+  throw error;
 }
 
 // Display posts in the UI
 function displayPosts(posts) {
   if (posts.length === 0) {
-    postsSection.innerHTML =
-      "<h3>Blog Posts</h3><p>No posts yet. Be the first to post!</p>";
+    const emptyMessage = currentCategoryId
+      ? "No posts in this folder."
+      : "No posts yet.";
+    postsSection.innerHTML = `<h3>Blog Posts</h3><p>${emptyMessage}</p>`;
     return;
   }
 
   const postsHTML = posts
-    .map(
-      (post, index) => `
+    .map((post, index) => {
+      const categoryName = getPostCategoryName(post);
+      return `
         <div class="post post-summary" data-post-index="${index}">
-            <div class="post-icon"></div>
-            <div class="post-title">${escapeHtml(post.title)}</div>
-            <div class="post-meta">${formatDate(post.created_at)}</div>
+          <div class="post-icon"></div>
+          <div class="post-title">${escapeHtml(post.title)}</div>
+          <div class="post-meta">
+            ${escapeHtml(categoryName)}<br>
+            ${formatDate(post.created_at)}
+          </div>
         </div>
-    `
-    )
+      `;
+    })
     .join("");
 
   postsSection.innerHTML = `<h3>Blog Posts</h3><div class="posts-container">${postsHTML}</div>`;
 
-  // Add click handlers to post summaries
   const postElements = postsSection.querySelectorAll(".post-summary");
   postElements.forEach((element, index) => {
     element.addEventListener("click", () => {
@@ -542,6 +1504,19 @@ function displayPosts(posts) {
       });
     });
   });
+}
+
+function getPostCategoryName(post) {
+  if (post.categories && post.categories.name) {
+    return post.categories.name;
+  }
+
+  const category = categories.find((item) => item.id === Number(post.category_id));
+  if (category) {
+    return category.name;
+  }
+
+  return "Uncategorized";
 }
 
 // Update status bar time
@@ -556,10 +1531,12 @@ function showPostDetail(post) {
   const postDetailTitle = document.getElementById("post-detail-title");
   const postDetailContent = document.getElementById("post-detail-content");
   const overlay = getOrCreateOverlay();
+  const categoryName = getPostCategoryName(post);
 
-  postDetailTitle.textContent = escapeHtml(post.title);
+  postDetailTitle.textContent = post.title || "Post Details";
   postDetailContent.innerHTML = `
     <h4>${escapeHtml(post.title)}</h4>
+    <div class="post-detail-category">Folder: ${escapeHtml(categoryName)}</div>
     <div>${renderPostContentWithImages(post.content, post.images)}</div>
     <small>
       By: ${escapeHtml(post.author_email)} |
@@ -573,12 +1550,9 @@ function showPostDetail(post) {
 
 function hidePostDetail() {
   const postDetailWindow = document.getElementById("post-detail-window");
-  const overlay = document.querySelector(".modal-overlay");
 
   postDetailWindow.style.display = "none";
-  if (overlay) {
-    overlay.style.display = "none";
-  }
+  hideOverlayIfNoModals();
 }
 
 // XP-style popup functions
@@ -594,12 +1568,42 @@ function showAlert(message) {
 
 function hidePopup() {
   const popupWindow = document.getElementById("xp-popup-window");
-  const overlay = document.querySelector(".modal-overlay");
 
   popupWindow.style.display = "none";
-  if (overlay) {
-    overlay.style.display = "none";
+  hideOverlayIfNoModals();
+}
+
+function showConfirm(message) {
+  const confirmWindow = document.getElementById("xp-confirm-window");
+  const confirmContent = document.getElementById("confirm-content");
+  const overlay = getOrCreateOverlay();
+
+  if (pendingConfirmResolve) {
+    closeConfirm(false);
   }
+
+  confirmContent.textContent = message;
+  overlay.style.display = "block";
+  confirmWindow.style.display = "block";
+  document.getElementById("confirm-ok").focus();
+
+  return new Promise((resolve) => {
+    pendingConfirmResolve = resolve;
+  });
+}
+
+function closeConfirm(value) {
+  const confirmWindow = document.getElementById("xp-confirm-window");
+  const resolve = pendingConfirmResolve;
+
+  pendingConfirmResolve = null;
+  confirmWindow.style.display = "none";
+
+  if (resolve) {
+    resolve(value);
+  }
+
+  hideOverlayIfNoModals();
 }
 
 function getOrCreateOverlay() {
@@ -612,10 +1616,37 @@ function getOrCreateOverlay() {
   return overlay;
 }
 
+function isWindowOpen(id) {
+  const element = document.getElementById(id);
+  return !!element && element.style.display !== "none";
+}
+
+function hideOverlayIfNoModals() {
+  const overlay = document.querySelector(".modal-overlay");
+  if (!overlay) return;
+
+  const openModalIds = [
+    "post-detail-window",
+    "category-manager-window",
+    "xp-popup-window",
+    "xp-confirm-window",
+    "progress-window",
+  ];
+
+  const hasOpenModal = openModalIds.some((id) => isWindowOpen(id));
+  if (!hasOpenModal) {
+    overlay.style.display = "none";
+  }
+}
+
 function escapeHtml(text) {
   const div = document.createElement("div");
-  div.textContent = text;
+  div.textContent = text ?? "";
   return div.innerHTML;
+}
+
+function escapeAttribute(text) {
+  return escapeHtml(text).replace(/"/g, "&quot;");
 }
 
 function formatDate(dateString) {
@@ -625,11 +1656,9 @@ function formatDate(dateString) {
 
 // Process code blocks enclosed in triple backticks
 function processCodeBlocks(content) {
-  // Regex to match ```code``` blocks (including optional language specifier)
   const codeBlockRegex = /```[\s\S]*?\n([\s\S]*?)```/g;
 
-  return content.replace(codeBlockRegex, (_, codeContent) => {
-    // Escape HTML within code blocks for security
+  return String(content || "").replace(codeBlockRegex, (_, codeContent) => {
     const div = document.createElement("div");
     div.textContent = codeContent.trim();
     const escapedCode = div.innerHTML;
@@ -644,107 +1673,108 @@ function showProgressBar(message, callback, max = 100) {
   const progressMessage = document.getElementById("progress-message");
   const progressBar = document.getElementById("progress-bar");
   const overlay = getOrCreateOverlay();
+  const maximum = Number(max) || 100;
 
-  // Set message
+  if (progressBar._animationInterval) {
+    clearInterval(progressBar._animationInterval);
+    progressBar._animationInterval = null;
+  }
+
   progressMessage.textContent = message || "Processing...";
-
-  // Set up determinate progress bar
-  progressBar.setAttribute("max", max);
+  progressBar.setAttribute("max", maximum);
   progressBar.setAttribute("value", 0);
 
-  // Show overlay and progress window
   overlay.style.display = "block";
   progressWindow.style.display = "block";
 
-  // Animate progress bar from 0 to max over 2 seconds
-  const duration = 2000; // 2 seconds
-  const frameRate = 60; // 60 FPS
+  const duration = 600;
+  const frameRate = 60;
   const totalFrames = (duration / 1000) * frameRate;
-  const increment = max / totalFrames;
-  let currentValue = 0;
+  const increment = maximum / totalFrames;
   let frameCount = 0;
 
-  const animationInterval = setInterval(() => {
-    frameCount++;
-    currentValue = Math.min(increment * frameCount, max);
-    progressBar.setAttribute("value", Math.round(currentValue));
+  return new Promise((resolve, reject) => {
+    const finish = async () => {
+      clearInterval(progressBar._animationInterval);
+      progressBar._animationInterval = null;
+      hideProgressBar();
 
-    if (frameCount >= totalFrames) {
-      clearInterval(animationInterval);
-      // Hide progress bar and execute callback
-      setTimeout(() => {
-        hideProgressBar();
-        if (callback && typeof callback === "function") {
-          callback();
-        }
-      }, 50); // Small delay to show completed state
-    }
-  }, 1000 / frameRate);
+      try {
+        const result =
+          callback && typeof callback === "function" ? await callback() : undefined;
+        resolve(result);
+      } catch (error) {
+        reject(error);
+      }
+    };
 
-  // Store interval ID for cleanup
-  progressBar._animationInterval = animationInterval;
+    progressBar._animationInterval = setInterval(() => {
+      frameCount++;
+      const currentValue = Math.min(increment * frameCount, maximum);
+      progressBar.setAttribute("value", Math.round(currentValue));
+
+      if (frameCount >= totalFrames) {
+        clearInterval(progressBar._animationInterval);
+        progressBar._animationInterval = null;
+        setTimeout(finish, 50);
+      }
+    }, 1000 / frameRate);
+  });
 }
 
 function hideProgressBar() {
   const progressWindow = document.getElementById("progress-window");
   const progressBar = document.getElementById("progress-bar");
-  const overlay = document.querySelector(".modal-overlay");
 
-  // Clean up animation interval if it exists
   if (progressBar._animationInterval) {
     clearInterval(progressBar._animationInterval);
     progressBar._animationInterval = null;
   }
 
   progressWindow.style.display = "none";
-  if (
-    overlay &&
-    document.getElementById("post-detail-window").style.display === "none" &&
-    document.getElementById("xp-popup-window").style.display === "none"
-  ) {
-    overlay.style.display = "none";
-  }
+  hideOverlayIfNoModals();
 }
 
 // Image handling functions
 async function handleImageUpload(event) {
-  const files = event.target.files;
-  if (!files || files.length === 0) {
+  const files = Array.from(event.target.files || []);
+  if (files.length === 0) {
     return;
   }
 
-  const imagePreviewArea = document.getElementById("image-preview-area");
+  await showProgressBar("Processing images...", async () => {
+    const imagePreviewArea = document.getElementById("image-preview-area");
 
-  try {
-    for (let file of files) {
-      if (!file.type.startsWith("image/")) {
-        showAlert(`${file.name} is not an image file`);
-        continue;
+    try {
+      for (const file of files) {
+        if (!file.type.startsWith("image/")) {
+          showAlert(`${file.name} is not an image file`);
+          continue;
+        }
+
+        const base64 = await fileToBase64(file);
+        const imageId = `img-${++imageCounter}`;
+
+        const imageData = {
+          id: imageId,
+          filename: file.name,
+          data: base64,
+          type: file.type,
+        };
+
+        uploadedImages.push(imageData);
+        addImagePreview(imageData);
       }
 
-      const base64 = await fileToBase64(file);
-      const imageId = `img-${++imageCounter}`;
-
-      const imageData = {
-        id: imageId,
-        filename: file.name,
-        data: base64,
-        type: file.type,
-      };
-
-      uploadedImages.push(imageData);
-      addImagePreview(imageData);
+      if (uploadedImages.length > 0) {
+        imagePreviewArea.style.display = "block";
+      }
+    } catch (error) {
+      showAlert("Error processing images: " + error.message);
     }
 
-    if (uploadedImages.length > 0) {
-      imagePreviewArea.style.display = "block";
-    }
-  } catch (error) {
-    showAlert("Error processing images: " + error.message);
-  }
-
-  // Clear the input so the same file can be selected again
-  event.target.value = "";
+    event.target.value = "";
+  });
 }
 
 function fileToBase64(file) {
@@ -758,34 +1788,32 @@ function fileToBase64(file) {
 
 function addImagePreview(imageData) {
   const imagePreviews = document.getElementById("image-previews");
-
   const previewItem = document.createElement("div");
   previewItem.className = "image-preview-item";
   previewItem.setAttribute("data-image-id", imageData.id);
 
   previewItem.innerHTML = `
-    <img src="${imageData.data}" alt="${imageData.filename}" class="image-preview-thumbnail">
+    <img src="${imageData.data}" alt="${escapeAttribute(
+    imageData.filename
+  )}" class="image-preview-thumbnail">
     <div class="image-preview-controls">
       <button type="button" class="image-preview-btn" onclick="insertImageIntoContent('${imageData.id}')">Insert</button>
       <button type="button" class="image-preview-btn" onclick="removeImagePreview('${imageData.id}')">Delete</button>
     </div>
-    <div class="image-preview-name">${imageData.filename}</div>
+    <div class="image-preview-name">${escapeHtml(imageData.filename)}</div>
   `;
 
   imagePreviews.appendChild(previewItem);
 }
 
 function removeImagePreview(imageId) {
-  // Remove from uploaded images array
-  uploadedImages = uploadedImages.filter((img) => img.id !== imageId);
+  uploadedImages = uploadedImages.filter((image) => image.id !== imageId);
 
-  // Remove preview element
   const previewItem = document.querySelector(`[data-image-id="${imageId}"]`);
   if (previewItem) {
     previewItem.remove();
   }
 
-  // Hide preview area if no images left
   if (uploadedImages.length === 0) {
     document.getElementById("image-preview-area").style.display = "none";
   }
@@ -795,54 +1823,51 @@ window.removeImagePreview = removeImagePreview;
 
 function insertImageIntoContent(imageId) {
   const contentTextarea = document.getElementById("post-content");
-  const imageData = uploadedImages.find((img) => img.id === imageId);
+  const imageData = uploadedImages.find((image) => image.id === imageId);
 
   if (!imageData) return;
 
   const cursorPosition = contentTextarea.selectionStart;
   const textBefore = contentTextarea.value.substring(0, cursorPosition);
   const textAfter = contentTextarea.value.substring(cursorPosition);
-
   const imageMarkdown = `![${imageData.filename}](${imageId})`;
 
   contentTextarea.value = textBefore + imageMarkdown + textAfter;
 
-  // Move cursor to after inserted text
   const newCursorPosition = cursorPosition + imageMarkdown.length;
   contentTextarea.setSelectionRange(newCursorPosition, newCursorPosition);
   contentTextarea.focus();
 }
 
-// Make functions globally accessible for onclick handlers
 window.insertImageIntoContent = insertImageIntoContent;
 
 function clearImageUploads() {
   uploadedImages = [];
   imageCounter = 0;
-  document.getElementById("image-previews").innerHTML = "";
-  document.getElementById("image-preview-area").style.display = "none";
-  document.getElementById("image-upload").value = "";
+
+  const imagePreviews = document.getElementById("image-previews");
+  const imagePreviewArea = document.getElementById("image-preview-area");
+  const imageUpload = document.getElementById("image-upload");
+
+  if (imagePreviews) imagePreviews.innerHTML = "";
+  if (imagePreviewArea) imagePreviewArea.style.display = "none";
+  if (imageUpload) imageUpload.value = "";
 }
 
 function renderPostContent(content, images) {
-  // For preview, remove code blocks and replace with indicator
-  let previewContent = content;
-
-  // Replace code blocks with placeholder text
+  let previewContent = String(content || "");
   const codeBlockRegex = /```[\s\S]*?\n([\s\S]*?)```/g;
   previewContent = previewContent.replace(codeBlockRegex, "[Code Block]");
 
-  // Escape HTML for security
   let renderedContent = escapeHtml(previewContent);
 
-  // Replace image markdown with simple text for list view
   if (images && images.length > 0) {
     images.forEach((image) => {
-      const imageMarkdown = `![${image.filename}](${image.id})`;
+      const imageMarkdown = escapeHtml(`![${image.filename}](${image.id})`);
       if (renderedContent.includes(imageMarkdown)) {
         renderedContent = renderedContent.replace(
           imageMarkdown,
-          `<span style="color: #0066cc; font-style: italic;">[Image]</span>`
+          '<span class="post-inline-marker">[Image]</span>'
         );
       }
     });
@@ -852,30 +1877,27 @@ function renderPostContent(content, images) {
 }
 
 function renderPostContentWithImages(content, images) {
-  // Process code blocks first, then escape remaining content
-  let processedContent = processCodeBlocks(content);
-
-  // Split content into parts: code blocks and regular content
+  const processedContent = processCodeBlocks(content);
   const parts = processedContent.split(/(<pre>[\s\S]*?<\/pre>)/);
 
-  // Process each part: escape non-pre content, keep pre content as-is
   let renderedContent = parts
     .map((part) => {
       if (part.startsWith("<pre>") && part.endsWith("</pre>")) {
-        return part; // Keep code blocks as-is
+        return part;
       }
-      return escapeHtml(part); // Escape regular content
+      return escapeHtml(part);
     })
     .join("");
 
-  // Replace image markdown with actual images
   if (images && images.length > 0) {
     images.forEach((image) => {
-      const imageMarkdown = `![${image.filename}](${image.id})`;
+      const imageMarkdown = escapeHtml(`![${image.filename}](${image.id})`);
       if (renderedContent.includes(imageMarkdown)) {
         renderedContent = renderedContent.replace(
           imageMarkdown,
-          `<img src="${image.data}" alt="${image.filename}" class="post-image" style="max-width: 100%; height: auto; border: 1px solid #808080; margin: 8px 0; display: block;">`
+          `<img src="${image.data}" alt="${escapeAttribute(
+            image.filename
+          )}" class="post-image">`
         );
       }
     });
@@ -885,15 +1907,21 @@ function renderPostContentWithImages(content, images) {
 }
 
 // Listen for auth state changes
-if (supabase) {
-  supabase.auth.onAuthStateChange((event, session) => {
+if (supabaseClient) {
+  supabaseClient.auth.onAuthStateChange(async (event, session) => {
     if (event === "SIGNED_IN") {
       currentUser = session.user;
+      isGuest = false;
+      await checkOwnerStatus();
       updateUIForLoggedInUser();
+      await refreshCategoryUI();
+      await loadPosts(currentCategoryIds);
     } else if (event === "SIGNED_OUT") {
       currentUser = null;
       isGuest = false;
+      isOwner = false;
       updateUIForLoggedOut();
+      await refreshCategoryUI();
     }
   });
 }
