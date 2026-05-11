@@ -1,36 +1,39 @@
 # Contributing
 
-XP Blog는 작은 정적 웹 앱이라 기여 흐름도 가볍게 유지합니다. 버그 수정, 문서 개선, 접근성 보강, XP 스타일을 해치지 않는 기능 제안을 환영합니다.
+XP Blog is a small static app, so contributions should stay lightweight and easy
+to review.
 
-## 시작하기
+## Local Setup
 
-1. 저장소를 fork하고 로컬에 clone합니다.
-2. `index.html`의 `xp-blog-config` JSON 블록에 본인 Supabase 프로젝트 값을 넣습니다.
-3. Supabase SQL Editor에서 `supabase.sql`을 실행합니다.
-4. 정적 서버로 실행합니다.
+1. Fork and clone the repository.
+2. Run `supabase.sql` in your own Supabase project.
+3. Replace the placeholder values in the `xp-blog-config` block in
+   `index.html`.
+4. Start a static server:
 
 ```bash
-python -m http.server 8000
+python3 -m http.server 8000
 ```
 
-브라우저에서 `http://localhost:8000`을 열어 확인합니다.
+Open `http://localhost:8000`.
 
-## 작업 기준
+## Guidelines
 
-- PR에는 실제 Supabase URL, anon key, service role key, 데이터베이스 비밀번호를 커밋하지 않습니다.
-- 로컬 확인을 위해 `xp-blog-config` 값을 바꿨다면 PR 전 기본값으로 되돌립니다.
-- `config.js`와 `.env*` 파일은 공개 저장소에 올리지 않습니다.
-- 외부 의존성 추가는 신중하게 제안해 주세요. 이 프로젝트는 vanilla HTML/CSS/JavaScript를 기본으로 합니다.
-- UI 변경은 Windows XP 탐색기 느낌과 XP.css 스타일을 유지해 주세요.
-- 사용자 입력을 화면에 넣는 코드는 `escapeHtml()` 같은 안전한 경로를 사용합니다.
+- Do not commit real Supabase project URLs, anon keys, service role keys, or
+  database passwords.
+- If you change `xp-blog-config` for local testing, restore the placeholders
+  before opening a pull request.
+- Keep the app vanilla HTML, CSS, and JavaScript unless a dependency is clearly
+  worth the extra setup.
+- Preserve the Windows XP / Explorer feel.
+- Use `escapeHtml()` or another safe path before rendering user-provided text.
+- Mention any `supabase.sql` schema or RLS changes in the pull request.
 
-## Pull Request
+## Pull Requests
 
-PR에는 다음 내용을 적어 주세요.
+Include:
 
-- 무엇을 바꿨는지
-- 왜 필요한 변경인지
-- 로컬에서 어떻게 확인했는지
-- Supabase schema나 RLS 변경이 있다면 마이그레이션 영향
-
-큰 기능은 먼저 issue로 방향을 맞춘 뒤 작업하면 리뷰가 훨씬 편합니다.
+- What changed
+- Why it changed
+- How you tested it
+- Any Supabase setup or migration notes

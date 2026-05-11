@@ -1,94 +1,67 @@
 # AGENTS.md
 
-This file provides guidance to Codex and other coding agents when working with this repository.
+This file provides guidance to Codex when working in this repository.
 
 ## Project Overview
 
-XP Blog is a Windows XP-themed personal blog template built as a static single-page app.
+XP Blog is a Windows XP themed static blog template built with vanilla HTML,
+CSS, and JavaScript.
 
-- **Frontend**: Vanilla HTML/CSS/JavaScript with XP.css
-- **Backend**: Supabase Auth, PostgreSQL, Row Level Security
-- **Architecture**: Single-page app with tab-based navigation and Explorer-style category browsing
+- Frontend: `index.html`, `style.css`, `app.js`
+- Styling: XP.css from a CDN plus local CSS
+- Backend: Supabase Auth, Postgres, and Row Level Security
+- Deployment target: any static host, with Cloudflare Pages documented as the
+  default path
 
 ## Key Files
 
-- `index.html` - Main HTML structure with XP-styled UI and inline app config
-- `app.js` - Authentication, posts, categories, image embedding, and modal logic
-- `style.css` - Custom CSS enhancements to the XP.css theme
-- `supabase.sql` - Schema, RLS policies, owner helper function, and setup SQL
-- `README.md` - User-facing setup and deployment instructions
-- `CONTRIBUTING.md` - Contribution guide
-- `SECURITY.md` - Security reporting and secret handling guidance
+- `index.html` - main UI and the `xp-blog-config` JSON block
+- `app.js` - authentication, post loading, category management, modals, and UI
+  state
+- `style.css` - XP theme adjustments and responsive layout
+- `supabase.sql` - complete schema, grants, triggers, and RLS policies
+- `README.md` - setup, Supabase, and Cloudflare Pages instructions
 
 ## Development
 
-### Running the Application
-
-This is a static web application. Serve it using any local web server:
+Serve the repository root with a local static server:
 
 ```bash
-python -m http.server 8000
+python3 -m http.server 8000
 ```
 
-or:
+Then open `http://localhost:8000`.
 
-```bash
-npx http-server
-```
+## Configuration
 
-You can also open `index.html` directly, but a local server better matches deployment behavior.
+The app reads Supabase settings from the `xp-blog-config` JSON block in
+`index.html`. Do not hardcode Supabase credentials in `app.js`.
 
-### Local Configuration
+Expected config keys:
 
-Do not hardcode Supabase credentials in `app.js`.
+- `url`
+- `anonKey`
+- `siteTitle`
+- `sourceUrl`
+- `sourceLabel`
 
-1. Set `url` and `anonKey` in the `xp-blog-config` JSON block near the bottom of `index.html`.
-2. Optionally set `siteTitle`, `sourceUrl`, and `sourceLabel`.
-3. Do not commit private service keys, database passwords, or server-only tokens.
+## Supabase Model
 
-`config.js`, `config.*.js`, `.env`, and `.env.*` are still ignored for old local setups and must not be committed.
+`supabase.sql` creates:
 
-## External Dependencies
+- `posts` with `title`, `content`, `author_email`, `category_id`, `images`,
+  `created_at`, and `updated_at`
+- `categories` with nested folder support
+- `site_admins` for owner authorization
+- `is_site_owner()` for RLS and UI owner checks
 
-- XP.css, loaded from CDN
-- Supabase JavaScript Client v2, loaded from CDN
-
-Avoid adding build tooling or heavy dependencies unless the change clearly needs it.
-
-## Architecture Notes
-
-### Authentication Flow
-
-- Users can sign in or browse as guests.
-- Public registration is disabled in `index.html` by default.
-- Authentication state is managed globally with `currentUser`, `isGuest`, and `isOwner`.
-- Supabase handles session persistence and auth state changes.
-- Owner-only UI is shown after `is_site_owner()` confirms the logged-in user is in `site_owners`.
-
-### Database Schema
-
-The app expects the objects created by `supabase.sql`:
-
-- `site_owners`: owner Auth user IDs
-- `categories`: hierarchical folders with visibility controls
-- `posts`: blog posts with category links and optional JSON image payloads
-- `is_site_owner()`: RPC for owner checks
-- RLS policies for public reads and owner-only writes
-
-Posts require a valid `category_id`. Hidden categories and their posts are visible only to owners.
-
-### UI State Management
-
-- Tab navigation switches between Login and Blog panels.
-- The left sidebar renders category folders; mobile uses a select fallback.
-- Dynamic UI updates are based on authentication and owner status.
-- Status bar shows user state, post count/filter state, and current time.
-- Modal windows are managed with a shared overlay.
+Public visitors can read visible posts and categories. Only users listed in
+`site_admins` can write posts or manage categories.
 
 ## Code Style
 
-- Use vanilla JavaScript with async/await for Supabase operations.
-- Use direct DOM references and keep event listener setup centralized.
-- Escape user-provided text with `escapeHtml()` or text-only DOM APIs.
-- Keep changes scoped; avoid introducing frameworks or bundlers for small fixes.
-- Preserve the Windows XP visual language when editing UI.
+- Keep the project vanilla HTML/CSS/JavaScript.
+- Use async/await for Supabase calls.
+- Use direct DOM references following the existing pattern.
+- Escape user-provided text with `escapeHtml()` before rendering.
+- Preserve the Windows XP visual language when changing UI.

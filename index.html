@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Myophily's Blog</title>
+    <title>XP Blog</title>
     <link rel="stylesheet" href="https://unpkg.com/xp.css" />
     <link rel="stylesheet" href="style.css" />
     <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" />
@@ -18,7 +18,7 @@
     <div class="desktop">
       <div class="window main-window">
         <div class="title-bar">
-          <div class="title-bar-text">Myophily's Blog - Internet Explorer</div>
+          <div class="title-bar-text">XP Blog - Internet Explorer</div>
           <div class="title-bar-controls">
             <button aria-label="Minimize"></button>
             <button aria-label="Maximize"></button>
@@ -64,10 +64,10 @@
 
                 <div class="tree-sidebar-footer">
                   <a
-                    href="https://github.com/Myophily"
+                    href="https://github.com/1000100000/Blog"
                     target="_blank"
                     rel="noopener noreferrer"
-                    >My Github</a
+                    >XP Blog Source</a
                   >
                 </div>
               </div>
@@ -88,7 +88,7 @@
           <!-- Login Panel -->
           <article role="tabpanel" hidden id="login-panel">
             <div id="login-section">
-              <h3>Welcome to My Blog</h3>
+              <h3>Welcome to XP Blog</h3>
               <p>Sign in to start posting, or browse posts as a guest.</p>
 
               <fieldset>
@@ -242,7 +242,12 @@
 
                 <div class="field-row-stacked">
                   <label for="category-name">Name:</label>
-                  <input id="category-name" type="text" maxlength="50" required />
+                  <input
+                    id="category-name"
+                    type="text"
+                    maxlength="50"
+                    required
+                  />
                 </div>
 
                 <div class="field-row-stacked">
@@ -274,7 +279,9 @@
 
                 <div class="field-row">
                   <button type="submit" id="category-save-btn">Save</button>
-                  <button type="button" id="category-edit-cancel">Cancel</button>
+                  <button type="button" id="category-edit-cancel">
+                    Cancel
+                  </button>
                 </div>
               </fieldset>
             </form>
@@ -289,7 +296,7 @@
         style="display: none"
       >
         <div class="title-bar">
-          <div class="title-bar-text">Myophily's Blog</div>
+          <div class="title-bar-text">XP Blog</div>
           <div class="title-bar-controls">
             <button id="popup-close" aria-label="Close"></button>
           </div>
@@ -311,7 +318,7 @@
         style="display: none"
       >
         <div class="title-bar">
-          <div class="title-bar-text">Myophily's Blog</div>
+          <div class="title-bar-text">XP Blog</div>
           <div class="title-bar-controls">
             <button id="confirm-close" aria-label="Close"></button>
           </div>
@@ -345,11 +352,11 @@
 
     <script id="xp-blog-config" type="application/json">
       {
-        "url": "https://YOUR_PROJECT_ID.supabase.co",
-        "anonKey": "YOUR_SUPABASE_ANON_PUBLIC_KEY",
-        "siteTitle": "Myophily's Blog",
-        "sourceUrl": "https://github.com/Myophily",
-        "sourceLabel": "My Github"
+        "url": "https://PROJECT_ID.supabase.co",
+        "anonKey": "ANON_KEY",
+        "siteTitle": "XP Blog",
+        "sourceUrl": "https://github.com/1000100000/Blog",
+        "sourceLabel": "XP Blog Source"
       }
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

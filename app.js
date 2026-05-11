@@ -2,40 +2,23 @@ const CONFIG_PLACEHOLDERS = new Set([
   "https://YOUR_PROJECT_ID.supabase.co",
   "YOUR_SUPABASE_ANON_PUBLIC_KEY",
 ]);
+
 let authUnavailableMessage = "";
 const appConfig = readAppConfig();
-let supabaseClient;
-
-supabaseClient = createSupabaseClient(appConfig);
-
-// Global state
-let currentUser = null;
-let isGuest = false;
-let isOwner = false;
-let categories = [];
-let categoryPostCounts = new Map();
-let categoryLoadFailed = false;
-let currentCategoryId = null;
-let currentCategoryIds = null;
-let currentCategoryLabel = "All Posts";
-let selectedManagerCategoryId = null;
-let categoryFormMode = "create";
-let uploadedImages = [];
-let imageCounter = 0;
-let pendingConfirmResolve = null;
-let postsLoadRequestId = 0;
-
-const CATEGORY_POST_LOADING_MS = 2000;
+let supabaseClient = createSupabaseClient(appConfig);
 
 function readAppConfig() {
   const configElement = document.getElementById("xp-blog-config");
 
   if (!configElement) {
+    authUnavailableMessage =
+      "Supabase configuration is missing. Add the xp-blog-config JSON block in index.html.";
     return {};
   }
 
   try {
-    return JSON.parse(configElement.textContent || "{}");
+    const parsed = JSON.parse(configElement.textContent || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
   } catch (error) {
     console.error("Failed to parse xp-blog-config:", error);
     authUnavailableMessage =
@@ -56,14 +39,14 @@ function createSupabaseClient(config) {
   ) {
     if (!authUnavailableMessage) {
       authUnavailableMessage =
-        "Supabase is not configured yet. Add your project URL and anon public key in the xp-blog-config block.";
+        "Supabase is not configured yet. Replace the placeholder URL and anon public key in the xp-blog-config block.";
     }
     return null;
   }
 
   if (!window.supabase) {
     authUnavailableMessage =
-      "Supabase could not be loaded. Check your connection and try again.";
+      "Supabase could not be loaded. Check your connection and the Supabase CDN script.";
     return null;
   }
 
@@ -78,24 +61,26 @@ function createSupabaseClient(config) {
 }
 
 function applyAppConfig() {
-  const siteTitle = String(appConfig.siteTitle || "").trim();
+  const siteTitle = String(appConfig.siteTitle || "XP Blog").trim() || "XP Blog";
   const sourceUrl = String(appConfig.sourceUrl || "").trim();
-  const sourceLabel = String(appConfig.sourceLabel || "").trim();
+  const sourceLabel = String(appConfig.sourceLabel || "Source Code").trim();
 
-  if (siteTitle) {
-    document.title = siteTitle;
+  document.title = siteTitle;
 
-    const mainTitle = document.querySelector(".main-window > .title-bar .title-bar-text");
-    if (mainTitle) {
-      mainTitle.textContent = `${siteTitle} - Internet Explorer`;
-    }
-
-    document
-      .querySelectorAll("#xp-popup-window .title-bar-text, #xp-confirm-window .title-bar-text")
-      .forEach((title) => {
-        title.textContent = siteTitle;
-      });
+  const mainTitle = document.querySelector(
+    ".main-window > .title-bar .title-bar-text"
+  );
+  if (mainTitle) {
+    mainTitle.textContent = `${siteTitle} - Internet Explorer`;
   }
+
+  document
+    .querySelectorAll(
+      "#xp-popup-window .title-bar-text, #xp-confirm-window .title-bar-text"
+    )
+    .forEach((title) => {
+      title.textContent = siteTitle;
+    });
 
   const sourceLink = document.querySelector(".tree-sidebar-footer a");
   if (sourceLink) {
@@ -108,6 +93,27 @@ function applyAppConfig() {
     }
   }
 }
+
+// Global state
+let currentUser = null;
+let isGuest = false;
+let isOwner = false;
+let categories = [];
+let categoryPostCounts = new Map();
+let categoryLoadFailed = false;
+let currentCategoryId = null;
+let currentCategoryIds = null;
+let currentCategoryLabel = "All Posts";
+let selectedManagerCategoryId = null;
+let categoryFormMode = "create";
+let uploadedImages = [];
+let imageCounter = 0;
+let pendingConfirmResolve = null;
+let postsLoadRequestId = 0;
+let authFlowInProgress = false;
+let currentAccessToken = "";
+
+const CATEGORY_POST_LOADING_MS = 2000;
 
 // DOM elements
 const loginTab = document.getElementById("login-tab");
@@ -326,7 +332,7 @@ function setupEventListeners() {
 }
 
 function disableAuthUI() {
-  document.getElementById("login-btn").disabled = false;
+  document.getElementById("login-btn").disabled = true;
   document.getElementById("register-btn").disabled = true;
   document.getElementById("guest-btn").disabled = false;
   showAuthStatus(getAuthUnavailableMessage());
@@ -351,6 +357,35 @@ function getAuthUnavailableMessage() {
     authUnavailableMessage ||
     "Supabase is not available right now. Check your configuration and try again."
   );
+}
+
+function getDataClient() {
+  if (!supabaseClient || !window.supabase) {
+    return null;
+  }
+
+  const headers = currentAccessToken
+    ? { Authorization: `Bearer ${currentAccessToken}` }
+    : {};
+
+  return window.supabase.createClient(appConfig.url, appConfig.anonKey, {
+    auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      persistSession: false,
+    },
+    global: {
+      headers,
+    },
+  });
+}
+
+function getRequiredDataClient() {
+  const client = getDataClient();
+  if (!client) {
+    throw new Error(getAuthUnavailableMessage());
+  }
+  return client;
 }
 
 // Tab switching functionality
@@ -380,10 +415,12 @@ async function checkUserSession() {
 
     if (session) {
       currentUser = session.user;
+      currentAccessToken = session.access_token || "";
       isGuest = false;
-      await checkOwnerStatus();
+      await refreshOwnerStatus();
       updateUIForLoggedInUser();
     } else {
+      currentAccessToken = "";
       updateUIForLoggedOut();
     }
   } catch (error) {
@@ -393,12 +430,12 @@ async function checkUserSession() {
 }
 
 async function checkOwnerStatus() {
-  if (!supabaseClient || !currentUser) {
+  if (!getDataClient() || !currentUser) {
     isOwner = false;
     return;
   }
 
-  const { data, error } = await supabaseClient.rpc("is_site_owner");
+  const { data, error } = await getRequiredDataClient().rpc("is_site_owner");
 
   if (error) {
     console.error("Failed to check owner status:", error);
@@ -422,26 +459,38 @@ async function handleLogin(event) {
 
   const email = document.getElementById("email").value;
   const password = document.getElementById("password").value;
+  authFlowInProgress = true;
+  setAuthButtonsDisabled(true);
+  showAuthStatus("Signing in...");
 
-  showProgressBar("Signing in...", async () => {
+  await showProgressBar("Signing in...", async () => {
     try {
-      hideAuthStatus();
-      const { data, error } = await supabaseClient.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { data, error } = await withTimeout(
+        supabaseClient.auth.signInWithPassword({
+          email,
+          password,
+        }),
+        15000,
+        "Login request timed out. Check your Supabase Auth settings and network connection."
+      );
 
       if (error) throw error;
 
       currentUser = data.user;
+      currentAccessToken = data.session ? data.session.access_token : "";
       isGuest = false;
-      await checkOwnerStatus();
-      updateUIForLoggedInUser();
-      await refreshCategoryUI();
-      await loadPosts(currentCategoryIds);
-      showAlert("Login successful!");
+      showAuthStatus("Loading blog data...");
+      await waitForNextTask();
+      const ownerWarning = await completeSignedInState();
+      hideAuthStatus();
+      showAlert(ownerWarning || "Login successful!");
     } catch (error) {
-      showAlert("Login failed: " + error.message);
+      const message = getAuthErrorMessage(error, "Login failed");
+      showAuthStatus(message);
+      showAlert(message);
+    } finally {
+      authFlowInProgress = false;
+      setAuthButtonsDisabled(false);
     }
   });
 }
@@ -463,28 +512,137 @@ async function handleRegister() {
     return;
   }
 
-  showProgressBar("Creating account...", async () => {
+  setAuthButtonsDisabled(true);
+  showAuthStatus("Creating account...");
+
+  await showProgressBar("Creating account...", async () => {
     try {
-      const { error } = await supabaseClient.auth.signUp({
-        email,
-        password,
-      });
+      const { error } = await withTimeout(
+        supabaseClient.auth.signUp({
+          email,
+          password,
+        }),
+        15000,
+        "Registration request timed out. Check your Supabase Auth settings and network connection."
+      );
 
       if (error) throw error;
 
-      showAlert(
-        "Registration successful! Please check your email to confirm your account."
-      );
+      const message =
+        "Registration successful. If email confirmation is enabled in Supabase, check your inbox before signing in.";
+      showAuthStatus(message);
+      showAlert(message);
     } catch (error) {
-      showAlert("Registration failed: " + error.message);
+      const message = getAuthErrorMessage(error, "Registration failed");
+      showAuthStatus(message);
+      showAlert(message);
+    } finally {
+      setAuthButtonsDisabled(false);
     }
   });
+}
+
+function setAuthButtonsDisabled(disabled) {
+  document.getElementById("login-btn").disabled = disabled;
+  document.getElementById("register-btn").disabled = disabled;
+}
+
+function getAuthErrorMessage(error, fallback) {
+  const message = error && error.message ? error.message : "Unknown error";
+
+  if (/email not confirmed/i.test(message)) {
+    return `${fallback}: Email is not confirmed yet. Check your inbox or disable email confirmation in Supabase Auth settings for local testing.`;
+  }
+
+  return `${fallback}: ${message}`;
+}
+
+async function completeSignedInState() {
+  const warnings = [];
+  const ownerWarning = await refreshOwnerStatus();
+  if (ownerWarning) {
+    warnings.push(ownerWarning);
+  }
+
+  updateUIForLoggedInUser();
+  const categoryWarning = await runOptionalStep(
+    withTimeout(
+      refreshCategoryUI(),
+      15000,
+      "Category loading timed out. Check the Supabase categories table and RLS policies."
+    ),
+    "Category loading failed"
+  );
+  if (categoryWarning) {
+    warnings.push(categoryWarning);
+  }
+
+  const postsWarning = await runOptionalStep(
+    withTimeout(
+      loadPosts(currentCategoryIds),
+      15000,
+      "Post loading timed out. Check the Supabase posts table and RLS policies."
+    ),
+    "Post loading failed"
+  );
+  if (postsWarning) {
+    warnings.push(postsWarning);
+  }
+
+  return warnings.length > 0 ? `Login successful, but ${warnings.join(" ")}` : "";
+}
+
+async function refreshOwnerStatus() {
+  try {
+    await withTimeout(
+      (async () => {
+        await waitForNextTask();
+        await checkOwnerStatus();
+      })(),
+      10000,
+      "Owner permission check timed out. You are signed in, but owner-only tools are disabled until Supabase responds."
+    );
+    return "";
+  } catch (error) {
+    console.error("Failed to check owner status:", error);
+    isOwner = false;
+    return getAuthErrorMessage(
+      error,
+      "owner-only tools are disabled for this session"
+    );
+  }
+}
+
+async function runOptionalStep(promise, fallback) {
+  try {
+    await promise;
+    return "";
+  } catch (error) {
+    console.error(fallback + ":", error);
+    return getAuthErrorMessage(error, fallback);
+  }
+}
+
+function withTimeout(promise, timeoutMs, message) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    clearTimeout(timeoutId);
+  });
+}
+
+function waitForNextTask() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 // Handle guest mode
 function handleGuestMode() {
   showProgressBar("Entering guest mode...", async () => {
     currentUser = null;
+    currentAccessToken = "";
     isGuest = true;
     isOwner = false;
     updateUIForGuest();
@@ -506,6 +664,7 @@ async function handleLogout() {
     try {
       await supabaseClient.auth.signOut();
       currentUser = null;
+      currentAccessToken = "";
       isGuest = false;
       isOwner = false;
       updateUIForLoggedOut();
@@ -605,7 +764,7 @@ async function refreshCategoryUI(options = {}) {
 async function loadCategories(options = {}) {
   const showErrors = options.showErrors || false;
 
-  if (!supabaseClient) {
+  if (!getDataClient()) {
     categories = [];
     categoryPostCounts = new Map();
     categoryLoadFailed = true;
@@ -613,7 +772,7 @@ async function loadCategories(options = {}) {
   }
 
   try {
-    const { data, error } = await supabaseClient
+    const { data, error } = await getRequiredDataClient()
       .from("categories")
       .select(
         "id, name, slug, parent_id, description, sort_order, is_visible, created_by, created_at, updated_at"
@@ -642,7 +801,7 @@ async function loadCategoryPostCounts() {
   const counts = new Map();
 
   try {
-    const { data, error } = await supabaseClient
+    const { data, error } = await getRequiredDataClient()
       .from("posts")
       .select("category_id");
 
@@ -1166,7 +1325,7 @@ async function handleCreateCategory(payload) {
 
   try {
     newCategoryId = await showProgressBar("Creating category...", async () => {
-      const { data, error } = await supabaseClient
+      const { data, error } = await getRequiredDataClient()
         .from("categories")
         .insert([
           {
@@ -1236,7 +1395,7 @@ async function handleUpdateCategory(categoryId, payload) {
 
   try {
     await showProgressBar("Saving category...", async () => {
-      const { error } = await supabaseClient
+      const { error } = await getRequiredDataClient()
         .from("categories")
         .update({
           name: payload.name,
@@ -1278,7 +1437,7 @@ async function handleHideCategory(categoryId) {
 
   try {
     await showProgressBar("Hiding category...", async () => {
-      const { error } = await supabaseClient
+      const { error } = await getRequiredDataClient()
         .from("categories")
         .update({
           is_visible: false,
@@ -1309,7 +1468,7 @@ async function canDeleteCategory(categoryId) {
     };
   }
 
-  const { count, error } = await supabaseClient
+  const { count, error } = await getRequiredDataClient()
     .from("posts")
     .select("id", { count: "exact", head: true })
     .eq("category_id", categoryId);
@@ -1352,7 +1511,7 @@ async function handleDeleteCategory(categoryId) {
 
   try {
     await showProgressBar("Deleting category...", async () => {
-      const { error } = await supabaseClient
+      const { error } = await getRequiredDataClient()
         .from("categories")
         .delete()
         .eq("id", categoryId);
@@ -1403,7 +1562,7 @@ async function handleCreatePost(event) {
 
   showProgressBar("Creating post...", async () => {
     try {
-      const { error } = await supabaseClient.from("posts").insert([
+      const { error } = await getRequiredDataClient().from("posts").insert([
         {
           title,
           content,
@@ -1432,7 +1591,7 @@ async function loadPosts(categoryIds = null, options = {}) {
   const requestId = ++postsLoadRequestId;
   const minLoadingPromise = waitForMinimumLoading(options.minLoadingMs);
 
-  if (!supabaseClient) {
+  if (!getDataClient()) {
     postsSection.innerHTML = `
       <h3>Blog Posts</h3>
       <p>No posts available. Supabase is not configured.</p>
@@ -1480,7 +1639,7 @@ function waitForMinimumLoading(minLoadingMs = 0) {
 }
 
 async function fetchPosts(categoryIds = null) {
-  let query = supabaseClient
+  let query = getRequiredDataClient()
     .from("posts")
     .select("*, categories (id, name, slug)");
 
@@ -1933,20 +2092,40 @@ function renderPostContentWithImages(content, images) {
 
 // Listen for auth state changes
 if (supabaseClient) {
-  supabaseClient.auth.onAuthStateChange(async (event, session) => {
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    if (session && session.access_token) {
+      currentAccessToken = session.access_token;
+    }
+
+    if (event === "TOKEN_REFRESHED") {
+      return;
+    }
+
     if (event === "SIGNED_IN") {
-      currentUser = session.user;
+      currentUser = session ? session.user : null;
       isGuest = false;
-      await checkOwnerStatus();
-      updateUIForLoggedInUser();
-      await refreshCategoryUI();
-      await loadPosts(currentCategoryIds);
+
+      if (authFlowInProgress || !currentUser) {
+        return;
+      }
+
+      setTimeout(async () => {
+        try {
+          await completeSignedInState();
+        } catch (error) {
+          console.error("Failed to refresh signed-in state:", error);
+          showAuthStatus(getAuthErrorMessage(error, "Login refresh failed"));
+        }
+      }, 0);
     } else if (event === "SIGNED_OUT") {
-      currentUser = null;
-      isGuest = false;
-      isOwner = false;
-      updateUIForLoggedOut();
-      await refreshCategoryUI();
+      setTimeout(async () => {
+        currentUser = null;
+        currentAccessToken = "";
+        isGuest = false;
+        isOwner = false;
+        updateUIForLoggedOut();
+        await refreshCategoryUI();
+      }, 0);
     }
   });
 }
