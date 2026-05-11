@@ -2,7 +2,7 @@
 
 Windows XP 스타일의 개인 블로그 템플릿입니다. 별도 빌드 과정 없이 HTML, CSS, JavaScript만으로 동작하며, 글과 카테고리 데이터는 Supabase에 저장합니다.
 
-배포 후 `config.js`에서 사이트 제목과 소스 링크를 원하는 값으로 바꿀 수 있습니다.
+배포 후 `index.html`의 `xp-blog-config` 설정 블록에서 사이트 제목과 소스 링크를 원하는 값으로 바꿀 수 있습니다.
 
 ## 주요 기능
 
@@ -28,10 +28,9 @@ Windows XP 스타일의 개인 블로그 템플릿입니다. 별도 빌드 과�
 
 ```text
 .
-├── index.html          # 화면 구조
+├── index.html          # 화면 구조와 인라인 앱 설정
 ├── app.js              # 인증, 게시글, 카테고리, 모달 로직
 ├── style.css           # XP 테마 보정 스타일
-├── config.example.js   # Supabase 설정 예시
 ├── supabase.sql        # Supabase SQL Editor에서 실행할 스키마/RLS 스크립트
 ├── CONTRIBUTING.md     # 기여 가이드
 ├── SECURITY.md         # 보안 정책
@@ -68,21 +67,21 @@ on conflict (user_id) do nothing;
 
 owner로 등록된 계정만 게시글과 카테고리를 관리할 수 있습니다.
 
-### 3. Supabase 설정 파일 만들기
+### 3. Supabase 설정 입력
 
-`config.example.js`를 복사해서 `config.js`를 만들고, Supabase 프로젝트의 URL과 anon public key를 넣습니다.
+`index.html` 맨 아래의 `xp-blog-config` JSON 블록에 Supabase 프로젝트의 URL과 anon public key를 넣습니다. 별도의 `config.js` 파일은 필요하지 않습니다.
 
-```javascript
-window.XP_BLOG_SUPABASE_CONFIG = {
-  url: "https://YOUR_PROJECT_ID.supabase.co",
-  anonKey: "YOUR_SUPABASE_ANON_PUBLIC_KEY",
-  siteTitle: "XP Blog",
-  sourceUrl: "https://github.com/YOUR_USERNAME/XP_Blog",
-  sourceLabel: "Source Code",
-};
+```html
+<script id="xp-blog-config" type="application/json">
+  {
+    "url": "https://YOUR_PROJECT_ID.supabase.co",
+    "anonKey": "YOUR_SUPABASE_ANON_PUBLIC_KEY",
+    "siteTitle": "XP Blog",
+    "sourceUrl": "https://github.com/YOUR_USERNAME/XP_Blog",
+    "sourceLabel": "Source Code"
+  }
+</script>
 ```
-
-`config.js`는 `.gitignore`에 포함되어 있으므로 공개 저장소에 커밋하지 않습니다.
 
 `siteTitle`, `sourceUrl`, `sourceLabel`은 선택 항목입니다. 포크해서 개인 블로그로 운영할 때 앱 제목과 좌측 하단 링크를 바꾸는 용도로 사용할 수 있습니다.
 
@@ -146,10 +145,10 @@ owner 계정은 Supabase Dashboard의 Authentication 메뉴에서 직접 만드�
 
 ## 공개 저장소 보안 메모
 
-- 실제 Supabase 프로젝트 URL과 anon key는 `app.js`에 직접 쓰지 않습니다.
-- 실제 값은 로컬 또는 배포 환경의 `config.js`에만 둡니다.
-- `config.js`, `config.*.js`, `.env`, `.env.*`는 커밋 대상에서 제외되어 있습니다.
+- 실제 Supabase 프로젝트 URL과 anon key는 `app.js`에 직접 쓰지 않고, `index.html`의 `xp-blog-config` 블록에서 읽습니다.
 - Supabase anon key는 브라우저에서 쓰는 공개 키이지만, 데이터 보호는 반드시 RLS 정책으로 보장해야 합니다.
+- 공개 저장소에 프로젝트 정보를 남기고 싶지 않다면 배포 과정에서 `xp-blog-config` 블록을 치환하거나, 개인 배포 브랜치에서만 값을 관리하세요.
+- `config.js`, `config.*.js`, `.env`, `.env.*`는 이전 로컬 설정이나 민감한 환경 파일이 실수로 커밋되지 않도록 계속 제외되어 있습니다.
 - service role key, database password, access token은 프론트엔드 코드나 공개 저장소에 절대 넣으면 안 됩니다.
 
 ## 기여하기
@@ -162,9 +161,9 @@ owner 계정은 Supabase Dashboard의 Authentication 메뉴에서 직접 만드�
 
 ## 배포
 
-이 앱은 정적 사이트라서 GitHub Pages, Cloudflare Pages, Netlify 같은 정적 호스팅에 올릴 수 있습니다. 다만 배포된 사이트에서도 `config.js`가 함께 제공되어야 Supabase에 연결됩니다.
+이 앱은 정적 사이트라서 GitHub Pages, Cloudflare Pages, Netlify 같은 정적 호스팅에 올릴 수 있습니다. `index.html`의 `xp-blog-config` 블록이 채워져 있으면 별도 `config.js` 없이 Supabase에 연결됩니다.
 
-공개 저장소에는 `config.example.js`만 커밋하고, 실제 `config.js`는 배포 플랫폼의 비공개 파일 생성 과정이나 수동 업로드 방식으로 관리하세요.
+공개 저장소에 Supabase 프로젝트 정보를 올리고 싶지 않다면 배포 플랫폼의 파일 치환 기능이나 개인 배포 브랜치를 사용하세요.
 
 ## 참고
 

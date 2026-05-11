@@ -12,10 +12,9 @@ XP Blog is a Windows XP-themed personal blog template built as a static single-p
 
 ## Key Files
 
-- `index.html` - Main HTML structure with XP-styled UI
+- `index.html` - Main HTML structure with XP-styled UI and inline app config
 - `app.js` - Authentication, posts, categories, image embedding, and modal logic
 - `style.css` - Custom CSS enhancements to the XP.css theme
-- `config.example.js` - Public example config; copy to ignored `config.js` for real Supabase values
 - `supabase.sql` - Schema, RLS policies, owner helper function, and setup SQL
 - `README.md` - User-facing setup and deployment instructions
 - `CONTRIBUTING.md` - Contribution guide
@@ -43,11 +42,11 @@ You can also open `index.html` directly, but a local server better matches deplo
 
 Do not hardcode Supabase credentials in `app.js`.
 
-1. Copy `config.example.js` to `config.js`.
-2. Set `url` and `anonKey` from the Supabase project API settings.
-3. Optionally set `siteTitle`, `sourceUrl`, and `sourceLabel`.
+1. Set `url` and `anonKey` in the `xp-blog-config` JSON block near the bottom of `index.html`.
+2. Optionally set `siteTitle`, `sourceUrl`, and `sourceLabel`.
+3. Do not commit private service keys, database passwords, or server-only tokens.
 
-`config.js`, `config.*.js`, `.env`, and `.env.*` are ignored and must not be committed.
+`config.js`, `config.*.js`, `.env`, and `.env.*` are still ignored for old local setups and must not be committed.
 
 ## External Dependencies
 

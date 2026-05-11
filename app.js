@@ -1,12 +1,16 @@
-const SUPABASE_CONFIG = window.XP_BLOG_SUPABASE_CONFIG || {};
-const SUPABASE_URL = SUPABASE_CONFIG.url || "";
-const SUPABASE_ANON_KEY = SUPABASE_CONFIG.anonKey || "";
+const SUPABASE_CONFIG = readAppConfig();
+const SUPABASE_URL = getConfigUrl(SUPABASE_CONFIG.url, "", {
+  allowRelative: false,
+});
+const SUPABASE_ANON_KEY = getConfigText(SUPABASE_CONFIG.anonKey, "");
 const SITE_TITLE = getConfigText(SUPABASE_CONFIG.siteTitle, "XP Blog");
 const SOURCE_URL = getConfigUrl(
   SUPABASE_CONFIG.sourceUrl || SUPABASE_CONFIG.githubUrl,
   ""
 );
 const SOURCE_LABEL = getConfigText(SUPABASE_CONFIG.sourceLabel, "Source Code");
+const SUPABASE_CONFIG_MESSAGE =
+  "Supabase is not configured. Set url and anonKey in the xp-blog-config block in index.html.";
 
 let supabaseClient = null;
 try {
@@ -16,9 +20,7 @@ try {
       SUPABASE_ANON_KEY
     );
   } else {
-    console.warn(
-      "Supabase is not configured. Create config.js from config.example.js."
-    );
+    console.warn(SUPABASE_CONFIG_MESSAGE);
   }
 } catch (e) {
   console.error("Supabase init failed:", e);
@@ -293,25 +295,46 @@ function applySiteConfig() {
   sourceLink.textContent = SOURCE_LABEL;
 }
 
+function readAppConfig() {
+  const configElement = document.getElementById("xp-blog-config");
+  if (!configElement) return {};
+
+  try {
+    const parsed = JSON.parse(configElement.textContent || "{}");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch (error) {
+    console.warn("Invalid inline app config:", error);
+  }
+
+  return {};
+}
+
 function getConfigText(value, fallback) {
   const text = String(value || "").trim();
   return text || fallback;
 }
 
-function getConfigUrl(value, fallback = "") {
+function getConfigUrl(value, fallback = "", options = {}) {
   const candidate = String(value || fallback || "").trim();
   if (!candidate) return "";
 
   try {
-    const parsed = new URL(candidate, window.location.href);
+    const parsed =
+      options.allowRelative === false
+        ? new URL(candidate)
+        : new URL(candidate, window.location.href);
     if (parsed.protocol === "http:" || parsed.protocol === "https:") {
       return parsed.href;
     }
   } catch (error) {
-    console.warn("Invalid URL in config:", error);
+    console.warn("Invalid URL in app config:", error);
   }
 
-  return fallback && candidate !== fallback ? getConfigUrl(fallback) : "";
+  return fallback && candidate !== fallback
+    ? getConfigUrl(fallback, "", options)
+    : "";
 }
 
 // Tab switching functionality
@@ -375,9 +398,7 @@ async function handleLogin(event) {
   event.preventDefault();
 
   if (!supabaseClient) {
-    showAlert(
-      "Supabase is not configured. Create config.js from config.example.js."
-    );
+    showAlert(SUPABASE_CONFIG_MESSAGE);
     return;
   }
 
@@ -409,9 +430,7 @@ async function handleLogin(event) {
 // Handle user registration
 async function handleRegister() {
   if (!supabaseClient) {
-    showAlert(
-      "Supabase is not configured. Create config.js from config.example.js."
-    );
+    showAlert(SUPABASE_CONFIG_MESSAGE);
     return;
   }
 
@@ -463,9 +482,7 @@ function handleGuestMode() {
 // Handle user logout
 async function handleLogout() {
   if (!supabaseClient) {
-    showAlert(
-      "Supabase is not configured. Create config.js from config.example.js."
-    );
+    showAlert(SUPABASE_CONFIG_MESSAGE);
     return;
   }
 

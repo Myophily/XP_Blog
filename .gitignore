@@ -2,7 +2,6 @@ CLAUDE.md
 config.js
 config.local.js
 config.*.js
-!config.example.js
 
 # Environment variables and secrets
 .env

@@ -5,7 +5,7 @@ XP Blog는 작은 정적 웹 앱이라 기여 흐름도 가볍게 유지합니�
 ## 시작하기
 
 1. 저장소를 fork하고 로컬에 clone합니다.
-2. `config.example.js`를 `config.js`로 복사한 뒤 본인 Supabase 프로젝트 값을 넣습니다.
+2. `index.html`의 `xp-blog-config` JSON 블록에 본인 Supabase 프로젝트 값을 넣습니다.
 3. Supabase SQL Editor에서 `supabase.sql`을 실행합니다.
 4. 정적 서버로 실행합니다.
 
@@ -17,7 +17,8 @@ python -m http.server 8000
 
 ## 작업 기준
 
-- 실제 Supabase URL, anon key, service role key, 데이터베이스 비밀번호는 커밋하지 않습니다.
+- PR에는 실제 Supabase URL, anon key, service role key, 데이터베이스 비밀번호를 커밋하지 않습니다.
+- 로컬 확인을 위해 `xp-blog-config` 값을 바꿨다면 PR 전 기본값으로 되돌립니다.
 - `config.js`와 `.env*` 파일은 공개 저장소에 올리지 않습니다.
 - 외부 의존성 추가는 신중하게 제안해 주세요. 이 프로젝트는 vanilla HTML/CSS/JavaScript를 기본으로 합니다.
 - UI 변경은 Windows XP 탐색기 느낌과 XP.css 스타일을 유지해 주세요.
